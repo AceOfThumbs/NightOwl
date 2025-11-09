@@ -2,6 +2,7 @@
 (function(){
   const MINUTES_IN_DAY = 1440;
   const STORAGE_KEY = 'nightowl.plan.v1';
+  const TRANSFER_KEY = 'nightowl.plan.transfer';
 
   // ---------- helpers ----------
   const clamp=(n,min,max)=>Math.min(max,Math.max(min,n));
@@ -88,6 +89,19 @@
   const panelText=$('panelText');
   const panelPrimary=$('panelPrimary');
   const panelCancel=$('panelCancel');
+  function configurePanelText({visible,value='',readOnly=false}={}){
+    panelText.value=value;
+    panelText.readOnly=!!readOnly;
+    if(visible){
+      panelText.classList.remove('hidden');
+    } else {
+      panelText.classList.add('hidden');
+    }
+  }
+  const closePanel=()=>{
+    panel.classList.add('hidden');
+    configurePanelText({visible:false});
+  };
 
   // ---------- persistence ----------
   const buildSaveObject=(startDate)=>({
@@ -106,6 +120,20 @@
   function save(){
     const payload=buildSaveObject(state.startDate);
     try{localStorage.setItem(STORAGE_KEY,JSON.stringify(payload));}catch{}
+  }
+  function applyImportedPlan(data){
+    if(data?.version!==1) return {ok:false,message:'Invalid plan data: missing version 1.'};
+    state.plannerMode=data.planner?.plannerMode||'wake';
+    state.direction=data.planner?.direction||'auto';
+    state.dailyStep=data.planner?.dailyStep??30;
+    state.timeZone=data.planner?.target?.zone||'local';
+    state.targetTime=data.planner?.target?.time||'07:00';
+    state.targetDate=data.planner?.targetDate||todayAsYYYYMMDD();
+    state.wakeDuration=data.model?.wakeDuration??(15*60);
+    state.wake=minutesToTimeString(toMinutes(data.model?.wake||state.wake));
+    state.startDate=todayAsYYYYMMDD();
+    save();
+    return {ok:true};
   }
   function load(){
     try{
@@ -265,44 +293,58 @@ yourDayDiv.innerHTML = `
 
   exportBtn.addEventListener('click',()=>{
     const data=buildSaveObject(state.startDate);
+    let message='Plan saved to this browser. Use Import to restore it later.';
+    try{localStorage.setItem(TRANSFER_KEY,JSON.stringify(data));}
+    catch(err){message='Export failed: '+(err?.message||'storage error');}
     panel.classList.remove('hidden');
     panelTitle.textContent='Export plan';
-    panelMessage.textContent='Copy the JSON below to save your plan.';
-    panelText.value=JSON.stringify(data,null,2);
-    panelPrimary.textContent='Copy hint';
-    panelPrimary.onclick=()=>{panelMessage.textContent='Select all and copy (Ctrl/Cmd+A, then Ctrl/Cmd+C).'};
+    panelMessage.textContent=message;
+    configurePanelText({visible:false});
+    panelPrimary.textContent='Close';
+    panelPrimary.onclick=closePanel;
   });
   importBtn.addEventListener('click',()=>{
     panel.classList.remove('hidden');
     panelTitle.textContent='Import plan';
-    panelMessage.textContent='Paste a NightOwl plan JSON below, then click Load.';
-    panelText.value='';
+    let raw=null;
+    try{raw=localStorage.getItem(TRANSFER_KEY);}catch(err){
+      panelMessage.textContent='Unable to access browser storage: '+(err?.message||'storage error');
+      configurePanelText({visible:false});
+      panelPrimary.textContent='Close';
+      panelPrimary.onclick=closePanel;
+      return;
+    }
+    if(!raw){
+      panelMessage.textContent='No exported plan found in this browser. Use Export to save one.';
+      configurePanelText({visible:false});
+      panelPrimary.textContent='Close';
+      panelPrimary.onclick=closePanel;
+      return;
+    }
+    let data;
+    try{data=JSON.parse(raw);}catch(err){
+      panelMessage.textContent='Saved plan is corrupted: '+(err?.message||'Parse error');
+      configurePanelText({visible:false});
+      panelPrimary.textContent='Close';
+      panelPrimary.onclick=closePanel;
+      return;
+    }
+    configurePanelText({visible:true,value:JSON.stringify(data,null,2),readOnly:true});
+    panelMessage.textContent='Load the plan saved in this browser?';
     panelPrimary.textContent='Load';
     panelPrimary.onclick=()=>{
-      try{
-        const data=JSON.parse(panelText.value);
-        if(data?.version===1){
-          state.plannerMode=data.planner?.plannerMode||'wake';
-          state.direction=data.planner?.direction||'auto';
-          state.dailyStep=data.planner?.dailyStep??30;
-          state.timeZone=data.planner?.target?.zone||'local';
-          state.targetTime=data.planner?.target?.time||'07:00';
-          state.targetDate=data.planner?.targetDate||todayAsYYYYMMDD();
-          state.wakeDuration=data.model?.wakeDuration??(15*60);
-          state.wake=minutesToTimeString(toMinutes(data.model?.wake||state.wake));
-          // reset plan start to today (no roll to avoid overwrite race)
-          state.startDate=todayAsYYYYMMDD();
-          const saved={...data,calendar:{...(data.calendar||{}),startDate:state.startDate}};
-          try{localStorage.setItem(STORAGE_KEY,JSON.stringify(saved));}catch{}
-          panelMessage.textContent='Plan imported successfully. You can close this panel.';
-          render();
-        } else {
-          panelMessage.textContent='Invalid plan JSON: missing version 1.';
-        }
-      }catch(err){ panelMessage.textContent='Import failed: '+(err?.message||'Parse error'); }
+      const result=applyImportedPlan(data);
+      if(result.ok){
+        panelMessage.textContent='Plan imported successfully. You can close this panel.';
+        panelPrimary.textContent='Close';
+        panelPrimary.onclick=closePanel;
+        render();
+      } else {
+        panelMessage.textContent=result.message||'Import failed.';
+      }
     };
   });
-  panelCancel.addEventListener('click',()=>{panel.classList.add('hidden')});
+  panelCancel.addEventListener('click',closePanel);
 
   // clock tick
   setInterval(()=>render(),30000);
