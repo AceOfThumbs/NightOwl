@@ -1,0 +1,168 @@
+<!-- index.html -->
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>NightOwl — Static</title>
+    <link rel="stylesheet" href="nightowl.css" />
+  </head>
+  <body>
+    <div class="container">
+      <header class="header">
+        <div>
+          <h1>NightOwl</h1>
+          <p class="muted">Shift-aware clock and circadian planner</p>
+        </div>
+        <div class="icon-row" aria-hidden>
+          <span class="sun">☀️</span>
+          <span class="moon">🌙</span>
+        </div>
+      </header>
+
+      <main class="grid">
+        <!-- LEFT: Clock + Wake & Sleep + Your Day -->
+        <section class="col col-2">
+          <div class="card">
+            <div class="card-head"><h2>Clock</h2></div>
+            <div class="clock-grid">
+              <div class="clock-box">
+                <svg id="analogClock" viewBox="0 0 200 200" class="clock-svg" aria-label="analog clock"></svg>
+              </div>
+              <div class="clock-meta">
+                <div class="label">Feels Like</div>
+                <div id="feelsLike" class="big"></div>
+                <div class="sub">Time zone: <strong>Local</strong></div>
+                <div class="row">
+                  <span class="label">Display</span>
+                  <button id="toggleFormat" class="btn">12-hour</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-head"><h2>Wake & Sleep Window</h2></div>
+            <div class="field">
+              <label>Wake time</label>
+              <input id="wakeInput" type="time" />
+            </div>
+            <div class="info">Sleep from <span id="sleepFrom" class="strong"></span> to <span id="sleepTo" class="strong"></span> (<span id="sleepHours"></span>h)</div>
+            <div class="row gap">
+              <span class="sun" aria-hidden>☀️</span>
+              <input id="wakeDuration" type="range" min="720" max="1200" step="15" />
+              <span class="moon" aria-hidden>🌙</span>
+            </div>
+            <div class="sub">(Sleep = 24h − wake = <span id="sleepHours2"></span>h)</div>
+          </div>
+
+          <div class="card">
+            <div class="card-head"><h2>Your Day</h2></div>
+            <div id="yourDay"></div>
+          </div>
+        </section>
+
+        <!-- RIGHT: Planner -->
+        <section class="col">
+          <div class="card fullheight">
+            <div class="card-head"><h2>Nudge Planner</h2></div>
+
+            <div class="grid2">
+              <div class="field">
+                <label>Target date</label>
+                <input id="targetDate" type="date" />
+              </div>
+              <div class="field">
+                <label>Plan for</label>
+                <select id="plannerMode">
+                  <option value="wake">Wake time</option>
+                  <option value="sleep">Sleep time</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="grid2">
+              <div class="field">
+                <label>Time zone</label>
+                <select id="timeZone">
+                  <option value="local">Local</option>
+                  <option value="UTC">UTC</option>
+                  <option value="America/Los_Angeles">America/Los_Angeles</option>
+                  <option value="America/Denver">America/Denver</option>
+                  <option value="America/Chicago">America/Chicago</option>
+                  <option value="America/New_York">America/New_York</option>
+                  <option value="Europe/London">Europe/London</option>
+                  <option value="Europe/Paris">Europe/Paris</option>
+                  <option value="Asia/Tokyo">Asia/Tokyo</option>
+                  <option value="Australia/Sydney">Australia/Sydney</option>
+                </select>
+              </div>
+              <div class="field">
+                <label>Target <span id="plannerModeLabel">wake</span> time (<span id="tzLabel">Local</span>)</label>
+                <input id="targetTime" type="time" />
+              </div>
+            </div>
+
+            <div class="grid2">
+              <div class="field">
+                <label>Max nudge per day (<span id="dailyStepLabel">30</span> min)</label>
+                <input id="dailyStep" type="range" min="5" max="240" step="5" />
+              </div>
+            </div>
+
+            <div class="field">
+              <label>Direction strategy</label>
+              <div class="row">
+                <button class="btn" data-dir="auto">auto</button>
+                <button class="btn" data-dir="earlier">earlier</button>
+                <button class="btn" data-dir="later">later</button>
+              </div>
+            </div>
+
+            <div class="row space">
+              <div>
+                <div class="label">Suggested schedule</div>
+                <div class="sub">(local time · sandbox: Export→clipboard, Import→paste)</div>
+              </div>
+              <div class="row">
+                <button id="exportBtn" class="btn">Export</button>
+                <button id="importBtn" class="btn">Import</button>
+              </div>
+            </div>
+
+            <!-- Data panel (export/import textarea) -->
+            <div id="dataPanel" class="panel hidden">
+              <div class="panel-head">
+                <div class="label" id="panelTitle"></div>
+                <div class="sub" id="panelMessage"></div>
+              </div>
+              <textarea id="panelText" placeholder='{"version":1, ...}'></textarea>
+              <div class="row">
+                <button id="panelPrimary" class="btn primary"></button>
+                <button id="panelCancel" class="btn">Close</button>
+              </div>
+            </div>
+
+            <div class="tablewrap">
+              <table class="table">
+                <thead>
+                  <tr>
+                    <th>Date</th>
+                    <th>Wake</th>
+                    <th>Sleep</th>
+                  </tr>
+                </thead>
+                <tbody id="planBody"></tbody>
+              </table>
+            </div>
+
+            <p class="sub">Tip: keep morning light bright and evening light calm to help the nudge stick.</p>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <script src="nightowl.js"></script>
+  </body>
+</html>
+

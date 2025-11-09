@@ -1,0 +1,43 @@
+/* nightowl.css */
+:root{
+  --bg:#0a0f1c; --card:#0f1836; --card2:#141a2b; --ink:#D6E6FF; --muted:#A7BFFF;
+  --border:#324c8f; --accent:#4e6bcb; --btn:#1a2b55; --primary:#FFD64D; --sky:#8EC5FF;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:system-ui,Segoe UI,Roboto,Inter,Arial,sans-serif}
+.container{max-width:1200px;margin:0 auto;padding:24px}
+.header{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px}
+.header h1{margin:0;font-size:28px;color:#EAF2FF}
+.muted{color:var(--muted);margin:4px 0 0}
+.icon-row{display:flex;gap:8px;font-size:20px}
+.sun,.moon{filter:saturate(1.2)}
+.grid{display:grid;grid-template-columns:2fr 1fr;gap:16px}
+.col{display:flex;flex-direction:column}
+.col-2{grid-column:1/span 1}
+.card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:16px}
+.card-head h2{margin:0 0 8px 0;font-size:18px}
+.fullheight{height:100%}
+.row{display:flex;align-items:center;gap:8px}
+.gap{gap:12px}
+.space{justify-content:space-between}
+.field{display:flex;flex-direction:column;gap:6px;margin:6px 0}
+.dayrow {display: flex;justify-content: space-between;padding: 4px 0;border-bottom: 1px solid #20305f}
+.dayrow:last-child {border-bottom: none}
+.label{font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.sub{font-size:12px;color:#7FA0FF}
+.strong{font-weight:600;color:#EAF2FF}
+.big{font-size:32px;font-weight:600}
+.btn{border:1px solid var(--accent);background:var(--btn);color:#EAF2FF;border-radius:8px;padding:6px 10px;cursor:pointer}
+.btn.primary{background:var(--primary);color:#000;border:none}
+input,select,textarea{background:#152552;border:1px solid #5b7cff;color:#EAF2FF;border-radius:6px;padding:6px}
+textarea{width:100%;height:160px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.tablewrap{max-height:260px;overflow:auto;border:1px solid var(--border);border-radius:8px;margin-top:10px}
+.table{width:100%;border-collapse:collapse;font-size:14px}
+.table thead{position:sticky;top:0;background:#152552}
+.table th,.table td{padding:8px;border-bottom:1px solid #20305f}
+.clock-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:center}
+.clock-box{aspect-ratio:1/1}
+.clock-svg{width:100%;height:100%}
+.panel{margin-top:10px;padding:12px;border:1px dashed var(--accent);border-radius:8px;background:#101a34}
+.hidden{display:none}
