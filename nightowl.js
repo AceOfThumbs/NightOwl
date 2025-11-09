@@ -3,11 +3,20 @@
   const MINUTES_IN_DAY = 1440;
   const STORAGE_KEY = 'nightowl.plan.v1';
   const TRANSFER_KEY = 'nightowl.plan.transfer';
+  const OVERRIDE_KEY = 'nightowl.override.now';
+  const noop=()=>{};
+
+  let overrideNowDate=null;
+  const pad=(n)=>String(n).padStart(2,'0');
+  const getNow=()=>overrideNowDate?new Date(overrideNowDate.getTime()):new Date();
+  const formatDatetimeLocal=(date)=>{
+    const d=new Date(date.getTime());
+    return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  };
 
   // ---------- helpers ----------
   const clamp=(n,min,max)=>Math.min(max,Math.max(min,n));
-  const pad=(n)=>String(n).padStart(2,'0');
-  const todayAsYYYYMMDD=()=>{const d=new Date();return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`};
+  const todayAsYYYYMMDD=()=>{const d=getNow();return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;};
   const toMinutes=(t)=>{const [h,m]=String(t).split(':').map(Number);return (((h||0)*60+(m||0))%MINUTES_IN_DAY+MINUTES_IN_DAY)%MINUTES_IN_DAY};
   const minutesToTimeString=(mins)=>{const m=((mins%MINUTES_IN_DAY)+MINUTES_IN_DAY)%MINUTES_IN_DAY;return `${pad(Math.floor(m/60))}:${pad(m%60)}`};
   const format12h=(mins)=>{const m=((mins%MINUTES_IN_DAY)+MINUTES_IN_DAY)%MINUTES_IN_DAY;let h=Math.floor(m/60);const mm=pad(m%60);const ap=h>=12?'PM':'AM';h%=12;if(h===0)h=12;return `${h}:${mm} ${ap}`};
@@ -80,6 +89,7 @@
   const dailyStep=$('dailyStep');
   const dailyStepLabel=$('dailyStepLabel');
   const planBody=$('planBody');
+  const yourDay=$('yourDay');
   const analogClock=$('analogClock');
   const exportBtn=$('exportBtn');
   const importBtn=$('importBtn');
@@ -89,6 +99,10 @@
   const panelText=$('panelText');
   const panelPrimary=$('panelPrimary');
   const panelCancel=$('panelCancel');
+  const overrideInput=$('overrideInput');
+  const applyOverride=$('applyOverride');
+  const clearOverride=$('clearOverride');
+  const overrideStatus=$('overrideStatus');
   function configurePanelText({visible,value='',readOnly=false}={}){
     panelText.value=value;
     panelText.readOnly=!!readOnly;
@@ -98,15 +112,58 @@
       panelText.classList.add('hidden');
     }
   }
+  function configurePanelButtons({primaryLabel,primaryHandler,showPrimary=true,cancelLabel='Close',showCancel=true}={}){
+    if(primaryLabel!==undefined) panelPrimary.textContent=primaryLabel;
+    panelPrimary.onclick=typeof primaryHandler==='function'?primaryHandler:noop;
+    panelPrimary.classList.toggle('hidden',!showPrimary);
+    if(cancelLabel!==undefined) panelCancel.textContent=cancelLabel;
+    panelCancel.classList.toggle('hidden',!showCancel);
+  }
   const closePanel=()=>{
     panel.classList.add('hidden');
+    panelTitle.textContent='';
+    panelMessage.textContent='';
     configurePanelText({visible:false});
+    configurePanelButtons({showPrimary:false,showCancel:false});
   };
+  function updateOverrideUI(customMessage){
+    if(overrideStatus){
+      if(customMessage){
+        overrideStatus.textContent=customMessage;
+      } else if(overrideNowDate){
+        overrideStatus.textContent=`Overriding current time: ${overrideNowDate.toLocaleString()}`;
+      } else {
+        overrideStatus.textContent='Using real current time.';
+      }
+    }
+    if(overrideInput&&document.activeElement!==overrideInput){
+      overrideInput.value=overrideNowDate?formatDatetimeLocal(overrideNowDate):'';
+    }
+  }
+  function applyOverrideValue(value){
+    if(!value){
+      overrideNowDate=null;
+      try{localStorage.removeItem(OVERRIDE_KEY);}catch{}
+      updateOverrideUI();
+      render();
+      return true;
+    }
+    const parsed=new Date(value);
+    if(Number.isNaN(parsed.getTime())){
+      updateOverrideUI('Invalid date/time. Please choose a valid value.');
+      return false;
+    }
+    overrideNowDate=parsed;
+    try{localStorage.setItem(OVERRIDE_KEY,parsed.toISOString());}catch{}
+    updateOverrideUI();
+    render();
+    return true;
+  }
 
   // ---------- persistence ----------
   const buildSaveObject=(startDate)=>({
     version:1,
-    savedAt:new Date().toISOString(),
+    savedAt:getNow().toISOString(),
     planner:{
       plannerMode:state.plannerMode,
       direction:state.direction,
@@ -165,7 +222,7 @@
     try{
       const sd=data.calendar?.startDate||todayAsYYYYMMDD();
       state.startDate=sd;
-      const start=new Date(sd); const today=new Date();
+      const start=new Date(sd); const today=getNow();
       const daysSince=Math.floor((new Date(today.getFullYear(),today.getMonth(),today.getDate())-new Date(start.getFullYear(),start.getMonth(),start.getDate()))/(24*60*60*1000));
       const localTargetM=convertMinutesBetweenTZ(data.planner?.target?.zone||'local','local',data.planner?.targetDate||todayAsYYYYMMDD(),toMinutes(data.planner?.target?.time||'07:00'));
       const wm=toMinutes(data.model?.wake||state.wake);
@@ -213,19 +270,19 @@
     sleepHours.textContent=String(hours);
     sleepHours2.textContent=String(hours);
 
-// --- Your Day panel ---
-const yourDayDiv = document.getElementById('yourDay');
-const e = computeDayEvents(wakeM, sleepDuration);
-yourDayDiv.innerHTML = `
-  <div class="dayrow"><span class="label">Wake</span><span class="strong">${format12h(e.wake)}</span></div>
-  <div class="dayrow"><span class="label">Lunch</span><span class="strong">${format12h(e.lunch)}</span></div>
-  <div class="dayrow"><span class="label">Dinner</span><span class="strong">${format12h(e.dinner)}</span></div>
-  <div class="dayrow"><span class="label">Sleep</span><span class="strong">${format12h(e.sleep)}</span></div>
-`;
+    // Your Day panel
+    if(yourDay){
+      const events=computeDayEvents(wakeM,sleepDuration);
+      yourDay.innerHTML=
+        `<div class="dayrow"><span class="label">Wake</span><span class="strong">${format12h(events.wake)}</span></div>`+
+        `<div class="dayrow"><span class="label">Lunch</span><span class="strong">${format12h(events.lunch)}</span></div>`+
+        `<div class="dayrow"><span class="label">Dinner</span><span class="strong">${format12h(events.dinner)}</span></div>`+
+        `<div class="dayrow"><span class="label">Sleep</span><span class="strong">${format12h(events.sleep)}</span></div>`;
+    }
 
 
     // feels-like clock
-    const now=new Date(); const nowM=now.getHours()*60+now.getMinutes();
+    const now=getNow(); const nowM=now.getHours()*60+now.getMinutes();
     const normalWake=7*60; const bioOffset=modDay(wakeM-normalWake);
     const bioMinutes=modDay(nowM-bioOffset);
     $('feelsLike').textContent=state.show12h?format12h(bioMinutes):`${pad(Math.floor(bioMinutes/60))}:${pad(bioMinutes%60)}`;
@@ -234,8 +291,8 @@ yourDayDiv.innerHTML = `
 
     // plan
     const targetLocal=convertMinutesBetweenTZ(state.timeZone,'local',state.targetDate,toMinutes(state.targetTime));
-    const nDays=(()=>{const p=state.targetDate.split('-').map(Number); if(p.length!==3||p.some(isNaN)) return 1; const end=new Date(p[0],p[1]-1,p[2]); const today=new Date(); const startOf=d=>new Date(d.getFullYear(),d.getMonth(),d.getDate()).getTime(); const diff=Math.round((startOf(end)-startOf(today))/(24*60*60*1000)); return Math.max(1,diff);})();
-    const rows=computePlanSchedule({wakeM,sleepM,plannerMode:state.plannerMode,targetTimeM:targetLocal,dailyStep:state.dailyStep,direction:state.direction,nDays,fromDate:new Date()});
+    const nDays=(()=>{const p=state.targetDate.split('-').map(Number); if(p.length!==3||p.some(isNaN)) return 1; const end=new Date(p[0],p[1]-1,p[2]); const today=getNow(); const startOf=d=>new Date(d.getFullYear(),d.getMonth(),d.getDate()).getTime(); const diff=Math.round((startOf(end)-startOf(today))/(24*60*60*1000)); return Math.max(1,diff);})();
+    const rows=computePlanSchedule({wakeM,sleepM,plannerMode:state.plannerMode,targetTimeM:targetLocal,dailyStep:state.dailyStep,direction:state.direction,nDays,fromDate:getNow()});
     planBody.innerHTML='';
     rows.forEach(row=>{
       const d=new Date(row.date);
@@ -300,44 +357,37 @@ yourDayDiv.innerHTML = `
     panelTitle.textContent='Export plan';
     panelMessage.textContent=message;
     configurePanelText({visible:false});
-    panelPrimary.textContent='Close';
-    panelPrimary.onclick=closePanel;
+    configurePanelButtons({primaryLabel:'Close',primaryHandler:closePanel,showPrimary:true,showCancel:false});
   });
   importBtn.addEventListener('click',()=>{
     panel.classList.remove('hidden');
     panelTitle.textContent='Import plan';
+    configurePanelText({visible:false});
     let raw=null;
     try{raw=localStorage.getItem(TRANSFER_KEY);}catch(err){
       panelMessage.textContent='Unable to access browser storage: '+(err?.message||'storage error');
-      configurePanelText({visible:false});
-      panelPrimary.textContent='Close';
-      panelPrimary.onclick=closePanel;
+      configurePanelButtons({primaryLabel:'Close',primaryHandler:closePanel,showPrimary:true,showCancel:false});
       return;
     }
     if(!raw){
       panelMessage.textContent='No exported plan found in this browser. Use Export to save one.';
-      configurePanelText({visible:false});
-      panelPrimary.textContent='Close';
-      panelPrimary.onclick=closePanel;
+      configurePanelButtons({primaryLabel:'Close',primaryHandler:closePanel,showPrimary:true,showCancel:false});
       return;
     }
     let data;
     try{data=JSON.parse(raw);}catch(err){
       panelMessage.textContent='Saved plan is corrupted: '+(err?.message||'Parse error');
-      configurePanelText({visible:false});
-      panelPrimary.textContent='Close';
-      panelPrimary.onclick=closePanel;
+      configurePanelButtons({primaryLabel:'Close',primaryHandler:closePanel,showPrimary:true,showCancel:false});
       return;
     }
     configurePanelText({visible:true,value:JSON.stringify(data,null,2),readOnly:true});
     panelMessage.textContent='Load the plan saved in this browser?';
-    panelPrimary.textContent='Load';
+    configurePanelButtons({primaryLabel:'Load',primaryHandler:noop,showPrimary:true,showCancel:true});
     panelPrimary.onclick=()=>{
       const result=applyImportedPlan(data);
       if(result.ok){
         panelMessage.textContent='Plan imported successfully. You can close this panel.';
-        panelPrimary.textContent='Close';
-        panelPrimary.onclick=closePanel;
+        configurePanelButtons({primaryLabel:'Load',primaryHandler:noop,showPrimary:false,showCancel:true});
         render();
       } else {
         panelMessage.textContent=result.message||'Import failed.';
@@ -345,6 +395,18 @@ yourDayDiv.innerHTML = `
     };
   });
   panelCancel.addEventListener('click',closePanel);
+  if(applyOverride){
+    applyOverride.addEventListener('click',()=>{
+      if(!overrideInput) return;
+      applyOverrideValue(overrideInput.value);
+    });
+  }
+  if(clearOverride){
+    clearOverride.addEventListener('click',()=>{
+      if(overrideInput) overrideInput.value='';
+      applyOverrideValue('');
+    });
+  }
 
   // clock tick
   setInterval(()=>render(),30000);
@@ -354,6 +416,16 @@ yourDayDiv.innerHTML = `
     // defaults
     wakeInput.value=state.wake; wakeDuration.value=String(state.wakeDuration);
     targetDate.value=state.targetDate; plannerMode.value=state.plannerMode; timeZone.value=state.timeZone; targetTime.value=state.targetTime; dailyStep.value=String(state.dailyStep);
+    try{
+      const stored=localStorage.getItem(OVERRIDE_KEY);
+      if(stored){
+        const parsed=new Date(stored);
+        if(!Number.isNaN(parsed.getTime())){
+          overrideNowDate=parsed;
+        }
+      }
+    }catch{}
+    updateOverrideUI();
     load(); save(); render();
   })();
 })();
