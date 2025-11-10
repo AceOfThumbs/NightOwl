@@ -202,6 +202,30 @@
     });
   }
 
+  let wakeReminderMessage=null;
+  function queueWakeReminder(wakeValue){
+    const wake24=minutesToTimeString(toMinutes(wakeValue));
+    const wake12=format12h(toMinutes(wake24));
+    wakeReminderMessage=`Today's planned wake time (${wake12} / ${wake24}) has been copied into the Wake field. Please update it if your actual wake time for today is different.`;
+  }
+  function maybeShowWakeReminder(){
+    if(!wakeReminderMessage) return;
+    if(panel&&panelMessage&&panelTitle){
+      if(panel.classList.contains('hidden')){
+        panel.classList.remove('hidden');
+        panelTitle.textContent='Check today\'s wake time';
+        panelMessage.textContent=wakeReminderMessage;
+        configurePanelText({visible:false});
+        configurePanelButtons({showPrimary:false,showSecondary:false,cancelLabel:'Close',showCancel:true});
+      } else {
+        panelMessage.textContent=`${panelMessage.textContent} ${wakeReminderMessage}`.trim();
+      }
+    } else if(typeof window!=='undefined'&&typeof window.alert==='function'){
+      window.alert(wakeReminderMessage);
+    }
+    wakeReminderMessage=null;
+  }
+
   // ---------- persistence ----------
   const buildSaveObject=(startDate)=>({
     version:1,
@@ -291,6 +315,24 @@
     const startCandidate=data.calendar?.startDate;
     const parsedStart=startCandidate?new Date(startCandidate):null;
     state.startDate=parsedStart&& !Number.isNaN(parsedStart.getTime())?startCandidate:todayAsYYYYMMDD();
+    const today=todayAsYYYYMMDD();
+    if(new Date(state.startDate)<new Date(today)){
+      const planForToday={
+        planner:{
+          plannerMode:state.plannerMode,
+          direction:state.direction,
+          dailyStep:state.dailyStep,
+          target:{time:state.targetTime,zone:state.timeZone},
+          targetDate:state.targetDate
+        },
+        model:{wake:state.wake,wakeDuration:state.wakeDuration},
+        calendar:{startDate:state.startDate}
+      };
+      const result=rollForwardToToday(planForToday);
+      if(result?.changedWake){
+        queueWakeReminder(result.plannedWake);
+      }
+    }
     save();
     return {ok:true};
   }
@@ -305,22 +347,27 @@
       state.targetTime=data.planner?.target?.time||'07:00';
       state.targetDate=data.planner?.targetDate||todayAsYYYYMMDD();
       state.wakeDuration=data.model?.wakeDuration??(15*60);
-      state.wake=data.model?.wake||'10:00';
+      state.wake=minutesToTimeString(toMinutes(data.model?.wake||'10:00'));
       state.startDate=data.calendar?.startDate||todayAsYYYYMMDD();
       // Optional roll only if stored startDate is in the past
       const today=todayAsYYYYMMDD();
       if (new Date(state.startDate) < new Date(today)) {
-        rollForwardToToday({
+        const result=rollForwardToToday({
           planner:{plannerMode:state.plannerMode,direction:state.direction,dailyStep:state.dailyStep,target:{time:state.targetTime,zone:state.timeZone},targetDate:state.targetDate},
           model:{wake:state.wake,wakeDuration:state.wakeDuration},
           calendar:{startDate:state.startDate}
         });
+        if(result?.changedWake){
+          queueWakeReminder(result.plannedWake);
+        }
       }
     }catch(e){console.warn('load failed',e)}
   }
 
   // ---------- logic ----------
   function rollForwardToToday(data){
+    let changedWake=false;
+    let plannedWake=state.wake;
     try{
       const sd=data.calendar?.startDate||todayAsYYYYMMDD();
       state.startDate=sd;
@@ -342,11 +389,16 @@
       let todaysMinutes;
       if(daysSince<=0) todaysMinutes=wm; else if(daysSince>=rows.length) todaysMinutes=localTargetM; else todaysMinutes=rows[daysSince]?.time||localTargetM;
       if((data.planner?.plannerMode||state.plannerMode)==='wake'){
-        state.wake=minutesToTimeString(todaysMinutes);
+        plannedWake=minutesToTimeString(todaysMinutes);
       } else {
-        const w=modDay(todaysMinutes+sdur); state.wake=minutesToTimeString(w);
+        const w=modDay(todaysMinutes+sdur); plannedWake=minutesToTimeString(w);
+      }
+      if(plannedWake!==state.wake){
+        state.wake=plannedWake;
+        changedWake=true;
       }
     }catch(e){console.warn('rollForwardToToday failed',e)}
+    return {changedWake,plannedWake};
   }
 
   // ---------- render ----------
@@ -550,6 +602,7 @@
             showCancel:true
           });
           render();
+          maybeShowWakeReminder();
         } else {
           panelMessage.textContent=result.message||'Load failed.';
         }
@@ -621,6 +674,7 @@
               showCancel:true
             });
             render();
+            maybeShowWakeReminder();
           } else {
             panelMessage.textContent=result.message||'Load failed.';
           }
@@ -667,5 +721,6 @@
     }catch{}
     updateOverrideUI();
     load(); save(); render();
+    maybeShowWakeReminder();
   })();
 })();
