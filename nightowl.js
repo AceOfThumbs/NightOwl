@@ -33,9 +33,19 @@
   const formatCompactDate=(d)=>d.toLocaleDateString(undefined,{weekday:'short',month:'short',day:'numeric'});
   const modDay=(n)=>((n%MINUTES_IN_DAY)+MINUTES_IN_DAY)%MINUTES_IN_DAY;
 
+  const FORMATTER_BASE_OPTIONS=Object.freeze({hour12:false,hour:'2-digit',minute:'2-digit'});
+  const formatterCache=new Map();
+  function getFormatterForTZ(tz){
+    const key=tz||'local';
+    if(!formatterCache.has(key)){
+      const options=key==='local'?{...FORMATTER_BASE_OPTIONS}:{...FORMATTER_BASE_OPTIONS,timeZone:key};
+      formatterCache.set(key,new Intl.DateTimeFormat('en-GB',options));
+    }
+    return formatterCache.get(key);
+  }
   function wallMinutesAt(date,tz){
-    const fmt={hour12:false,hour:'2-digit',minute:'2-digit'};
-    const parts=new Intl.DateTimeFormat('en-GB', tz==='local'?fmt:{...fmt,timeZone:tz}).formatToParts(date);
+    const formatter=getFormatterForTZ(tz);
+    const parts=formatter.formatToParts(date);
     const h=Number(parts.find(p=>p.type==='hour')?.value||'0');
     const m=Number(parts.find(p=>p.type==='minute')?.value||'0');
     return modDay(h*60+m);
@@ -99,6 +109,7 @@
   const dailyStep=$('dailyStep');
   const dailyStepLabel=$('dailyStepLabel');
   const planBody=$('planBody');
+  const dirButtons=Array.from(document.querySelectorAll('[data-dir]'));
   const yourDay=$('yourDay');
   const analogClock=$('analogClock');
   const saveBtn=$('saveBtn');
@@ -179,6 +190,40 @@
     updateOverrideUI();
     render();
     return true;
+  }
+
+  function updateDirectionButtons(){
+    if(dirButtons.length===0) return;
+    dirButtons.forEach(btn=>{
+      const value=btn.getAttribute('data-dir');
+      const isActive=value===state.direction;
+      btn.classList.toggle('btn--active',isActive);
+      btn.setAttribute('aria-pressed',String(isActive));
+    });
+  }
+
+  let wakeReminderMessage=null;
+  function queueWakeReminder(wakeValue){
+    const wake24=minutesToTimeString(toMinutes(wakeValue));
+    const wake12=format12h(toMinutes(wake24));
+    wakeReminderMessage=`Today's planned wake time (${wake12} / ${wake24}) has been copied into the Wake field. Please update it if your actual wake time for today is different.`;
+  }
+  function maybeShowWakeReminder(){
+    if(!wakeReminderMessage) return;
+    if(panel&&panelMessage&&panelTitle){
+      if(panel.classList.contains('hidden')){
+        panel.classList.remove('hidden');
+        panelTitle.textContent='Check today\'s wake time';
+        panelMessage.textContent=wakeReminderMessage;
+        configurePanelText({visible:false});
+        configurePanelButtons({showPrimary:false,showSecondary:false,cancelLabel:'Close',showCancel:true});
+      } else {
+        panelMessage.textContent=`${panelMessage.textContent} ${wakeReminderMessage}`.trim();
+      }
+    } else if(typeof window!=='undefined'&&typeof window.alert==='function'){
+      window.alert(wakeReminderMessage);
+    }
+    wakeReminderMessage=null;
   }
 
   // ---------- persistence ----------
@@ -270,6 +315,24 @@
     const startCandidate=data.calendar?.startDate;
     const parsedStart=startCandidate?new Date(startCandidate):null;
     state.startDate=parsedStart&& !Number.isNaN(parsedStart.getTime())?startCandidate:todayAsYYYYMMDD();
+    const today=todayAsYYYYMMDD();
+    if(new Date(state.startDate)<new Date(today)){
+      const planForToday={
+        planner:{
+          plannerMode:state.plannerMode,
+          direction:state.direction,
+          dailyStep:state.dailyStep,
+          target:{time:state.targetTime,zone:state.timeZone},
+          targetDate:state.targetDate
+        },
+        model:{wake:state.wake,wakeDuration:state.wakeDuration},
+        calendar:{startDate:state.startDate}
+      };
+      const result=rollForwardToToday(planForToday);
+      if(result?.changedWake){
+        queueWakeReminder(result.plannedWake);
+      }
+    }
     save();
     return {ok:true};
   }
@@ -284,22 +347,27 @@
       state.targetTime=data.planner?.target?.time||'07:00';
       state.targetDate=data.planner?.targetDate||todayAsYYYYMMDD();
       state.wakeDuration=data.model?.wakeDuration??(15*60);
-      state.wake=data.model?.wake||'10:00';
+      state.wake=minutesToTimeString(toMinutes(data.model?.wake||'10:00'));
       state.startDate=data.calendar?.startDate||todayAsYYYYMMDD();
       // Optional roll only if stored startDate is in the past
       const today=todayAsYYYYMMDD();
       if (new Date(state.startDate) < new Date(today)) {
-        rollForwardToToday({
+        const result=rollForwardToToday({
           planner:{plannerMode:state.plannerMode,direction:state.direction,dailyStep:state.dailyStep,target:{time:state.targetTime,zone:state.timeZone},targetDate:state.targetDate},
           model:{wake:state.wake,wakeDuration:state.wakeDuration},
           calendar:{startDate:state.startDate}
         });
+        if(result?.changedWake){
+          queueWakeReminder(result.plannedWake);
+        }
       }
     }catch(e){console.warn('load failed',e)}
   }
 
   // ---------- logic ----------
   function rollForwardToToday(data){
+    let changedWake=false;
+    let plannedWake=state.wake;
     try{
       const sd=data.calendar?.startDate||todayAsYYYYMMDD();
       state.startDate=sd;
@@ -321,11 +389,16 @@
       let todaysMinutes;
       if(daysSince<=0) todaysMinutes=wm; else if(daysSince>=rows.length) todaysMinutes=localTargetM; else todaysMinutes=rows[daysSince]?.time||localTargetM;
       if((data.planner?.plannerMode||state.plannerMode)==='wake'){
-        state.wake=minutesToTimeString(todaysMinutes);
+        plannedWake=minutesToTimeString(todaysMinutes);
       } else {
-        const w=modDay(todaysMinutes+sdur); state.wake=minutesToTimeString(w);
+        const w=modDay(todaysMinutes+sdur); plannedWake=minutesToTimeString(w);
+      }
+      if(plannedWake!==state.wake){
+        state.wake=plannedWake;
+        changedWake=true;
       }
     }catch(e){console.warn('rollForwardToToday failed',e)}
+    return {changedWake,plannedWake};
   }
 
   // ---------- render ----------
@@ -386,6 +459,8 @@
         planBody.appendChild(tr);
       });
     }
+
+    updateDirectionButtons();
   }
 
   function drawClock(svgEl,minutes){
@@ -430,7 +505,18 @@
   if(timeZone) timeZone.addEventListener('change',e=>{state.timeZone=e.target.value;tzLabel.textContent=state.timeZone==='local'?'Local':state.timeZone;state.startDate=todayAsYYYYMMDD();save();render()});
   if(targetTime) targetTime.addEventListener('input',e=>{state.targetTime=e.target.value;state.startDate=todayAsYYYYMMDD();save();render()});
   if(dailyStep) dailyStep.addEventListener('input',e=>{state.dailyStep=clamp(Number(e.target.value),5,240);dailyStepLabel.textContent=String(state.dailyStep);state.startDate=todayAsYYYYMMDD();save();render()});
-  document.querySelectorAll('[data-dir]').forEach(btn=>btn.addEventListener('click',()=>{state.direction=btn.getAttribute('data-dir');state.startDate=todayAsYYYYMMDD();save();render()}));
+  dirButtons.forEach(btn=>{
+    btn.setAttribute('aria-pressed','false');
+    btn.setAttribute('type','button');
+    btn.addEventListener('click',()=>{
+      const value=btn.getAttribute('data-dir');
+      if(!value) return;
+      state.direction=value;
+      state.startDate=todayAsYYYYMMDD();
+      save();
+      render();
+    });
+  });
 
   if(saveBtn){
     saveBtn.addEventListener('click',()=>{
@@ -516,6 +602,7 @@
             showCancel:true
           });
           render();
+          maybeShowWakeReminder();
         } else {
           panelMessage.textContent=result.message||'Load failed.';
         }
@@ -587,6 +674,7 @@
               showCancel:true
             });
             render();
+            maybeShowWakeReminder();
           } else {
             panelMessage.textContent=result.message||'Load failed.';
           }
@@ -633,5 +721,6 @@
     }catch{}
     updateOverrideUI();
     load(); save(); render();
+    maybeShowWakeReminder();
   })();
 })();
