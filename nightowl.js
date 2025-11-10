@@ -101,8 +101,10 @@
   const planBody=$('planBody');
   const yourDay=$('yourDay');
   const analogClock=$('analogClock');
-  const exportBtn=$('exportBtn');
-  const importBtn=$('importBtn');
+  const saveBtn=$('saveBtn');
+  const loadBtn=$('loadBtn');
+  const shareBtn=$('shareBtn');
+  const sharedBtn=$('sharedBtn');
   const panel=$('dataPanel');
   const panelTitle=$('panelTitle');
   const panelMessage=$('panelMessage');
@@ -184,6 +186,64 @@
     model:{wake:state.wake,wakeDuration:state.wakeDuration},
     calendar:{startDate,lastAdvancedDate:todayAsYYYYMMDD()}
   });
+  const SHARE_PREFIX='NO1';
+  function normalizeTimeString(value,defaultValue){
+    return minutesToTimeString(toMinutes(value||defaultValue));
+  }
+  function encodePlanToShareText(data){
+    const entries=[
+      ['mode',data.planner?.plannerMode||'wake'],
+      ['dir',data.planner?.direction||'auto'],
+      ['step',clamp(Number(data.planner?.dailyStep??30),5,240)],
+      ['tz',data.planner?.target?.zone||'local'],
+      ['target',normalizeTimeString(data.planner?.target?.time||'07:00','07:00')],
+      ['date',data.planner?.targetDate||todayAsYYYYMMDD()],
+      ['wake',normalizeTimeString(data.model?.wake||'10:00','10:00')],
+      ['dur',clamp(Number(data.model?.wakeDuration??(15*60)),720,1200)],
+      ['start',data.calendar?.startDate||todayAsYYYYMMDD()]
+    ];
+    return `${SHARE_PREFIX};`+entries.map(([k,v])=>`${k}=${v}`).join(';');
+  }
+  function decodeSharedPlan(text){
+    if(!text||!text.trim()) return {ok:false,message:'Please paste a shared plan code.'};
+    const normalized=text.trim().replace(/\r?\n/g,';');
+    const parts=normalized.split(';').map(p=>p.trim()).filter(Boolean);
+    if(parts.length===0) return {ok:false,message:'Shared code is empty.'};
+    if(parts[0]!==SHARE_PREFIX) return {ok:false,message:'Unrecognized shared code. It should start with "NO1".'};
+    const map={};
+    for(let i=1;i<parts.length;i++){
+      const part=parts[i];
+      const eq=part.indexOf('=');
+      if(eq===-1) continue;
+      const key=part.slice(0,eq).trim();
+      const value=part.slice(eq+1).trim();
+      if(key) map[key]=value;
+    }
+    const dailyStep=clamp(Number.parseInt(map.step,10)||30,5,240);
+    const wakeDuration=clamp(Number.parseInt(map.dur,10)||state.wakeDuration||15*60,720,1200);
+    const plannerMode=map.mode==='sleep'?'sleep':'wake';
+    const direction=map.dir||'auto';
+    const targetZone=map.tz||'local';
+    const targetTime=normalizeTimeString(map.target||'07:00','07:00');
+    const targetDate=map.date||todayAsYYYYMMDD();
+    const wake=normalizeTimeString(map.wake||state.wake||'10:00','10:00');
+    const startDate=map.start||todayAsYYYYMMDD();
+    return {
+      ok:true,
+      data:{
+        version:1,
+        planner:{
+          plannerMode,
+          direction,
+          dailyStep,
+          target:{time:targetTime,zone:targetZone},
+          targetDate
+        },
+        model:{wake,wakeDuration},
+        calendar:{startDate}
+      }
+    };
+  }
   function save(){
     const payload=buildSaveObject(state.startDate);
     try{localStorage.setItem(STORAGE_KEY,JSON.stringify(payload));}catch{}
@@ -198,7 +258,9 @@
     state.targetDate=data.planner?.targetDate||todayAsYYYYMMDD();
     state.wakeDuration=data.model?.wakeDuration??(15*60);
     state.wake=minutesToTimeString(toMinutes(data.model?.wake||state.wake));
-    state.startDate=todayAsYYYYMMDD();
+    const startCandidate=data.calendar?.startDate;
+    const parsedStart=startCandidate?new Date(startCandidate):null;
+    state.startDate=parsedStart&& !Number.isNaN(parsedStart.getTime())?startCandidate:todayAsYYYYMMDD();
     save();
     return {ok:true};
   }
@@ -358,52 +420,105 @@
   dailyStep.addEventListener('input',e=>{state.dailyStep=clamp(Number(e.target.value),5,240);dailyStepLabel.textContent=String(state.dailyStep);state.startDate=todayAsYYYYMMDD();save();render()});
   document.querySelectorAll('[data-dir]').forEach(btn=>btn.addEventListener('click',()=>{state.direction=btn.getAttribute('data-dir');state.startDate=todayAsYYYYMMDD();save();render()}));
 
-  exportBtn.addEventListener('click',()=>{
-    const data=buildSaveObject(state.startDate);
-    let message='Plan saved to this browser. Use Import to restore it later.';
-    try{localStorage.setItem(TRANSFER_KEY,JSON.stringify(data));}
-    catch(err){message='Export failed: '+(err?.message||'storage error');}
-    panel.classList.remove('hidden');
-    panelTitle.textContent='Export plan';
-    panelMessage.textContent=message;
-    configurePanelText({visible:false});
-    configurePanelButtons({showPrimary:false,cancelLabel:'Close',showCancel:true});
-  });
-  importBtn.addEventListener('click',()=>{
-    panel.classList.remove('hidden');
-    panelTitle.textContent='Import plan';
-    configurePanelText({visible:false});
-    let raw=null;
-    try{raw=localStorage.getItem(TRANSFER_KEY);}catch(err){
-      panelMessage.textContent='Unable to access browser storage: '+(err?.message||'storage error');
-      configurePanelButtons({primaryLabel:'Close',primaryHandler:closePanel,showPrimary:true,showCancel:false});
-      return;
-    }
-    if(!raw){
-      panelMessage.textContent='No exported plan found in this browser. Use Export to save one.';
-      configurePanelButtons({primaryLabel:'Close',primaryHandler:closePanel,showPrimary:true,showCancel:false});
-      return;
-    }
-    let data;
-    try{data=JSON.parse(raw);}catch(err){
-      panelMessage.textContent='Saved plan is corrupted: '+(err?.message||'Parse error');
-      configurePanelButtons({primaryLabel:'Close',primaryHandler:closePanel,showPrimary:true,showCancel:false});
-      return;
-    }
-    configurePanelText({visible:true,value:JSON.stringify(data,null,2),readOnly:true});
-    panelMessage.textContent='Load the plan saved in this browser?';
-    configurePanelButtons({primaryLabel:'Load',primaryHandler:noop,showPrimary:true,cancelLabel:'Cancel',showCancel:true});
-    panelPrimary.onclick=()=>{
-      const result=applyImportedPlan(data);
-      if(result.ok){
-        panelMessage.textContent='Plan imported successfully. You can close this panel.';
-        configurePanelButtons({showPrimary:false,cancelLabel:'Close',showCancel:true});
-        render();
-      } else {
-        panelMessage.textContent=result.message||'Import failed.';
+  if(saveBtn){
+    saveBtn.addEventListener('click',()=>{
+      const data=buildSaveObject(state.startDate);
+      let message='Plan saved to this browser. Use Load to restore it later.';
+      try{localStorage.setItem(TRANSFER_KEY,JSON.stringify(data));}
+      catch(err){message='Save failed: '+(err?.message||'storage error');}
+      panel.classList.remove('hidden');
+      panelTitle.textContent='Save plan';
+      panelMessage.textContent=message;
+      configurePanelText({visible:false});
+      configurePanelButtons({showPrimary:false,cancelLabel:'Close',showCancel:true});
+    });
+  }
+  if(loadBtn){
+    loadBtn.addEventListener('click',()=>{
+      panel.classList.remove('hidden');
+      panelTitle.textContent='Load plan';
+      configurePanelText({visible:false});
+      let raw=null;
+      try{raw=localStorage.getItem(TRANSFER_KEY);}catch(err){
+        panelMessage.textContent='Unable to access browser storage: '+(err?.message||'storage error');
+        configurePanelButtons({primaryLabel:'Close',primaryHandler:closePanel,showPrimary:true,showCancel:false});
+        return;
       }
-    };
-  });
+      if(!raw){
+        panelMessage.textContent='No saved plan found in this browser. Use Save to store one.';
+        configurePanelButtons({primaryLabel:'Close',primaryHandler:closePanel,showPrimary:true,showCancel:false});
+        return;
+      }
+      let data;
+      try{data=JSON.parse(raw);}catch(err){
+        panelMessage.textContent='Saved plan is corrupted: '+(err?.message||'Parse error');
+        configurePanelButtons({primaryLabel:'Close',primaryHandler:closePanel,showPrimary:true,showCancel:false});
+        return;
+      }
+      configurePanelText({visible:true,value:JSON.stringify(data,null,2),readOnly:true});
+      panelMessage.textContent='Load the plan saved in this browser?';
+      configurePanelButtons({primaryLabel:'Load',primaryHandler:noop,showPrimary:true,cancelLabel:'Cancel',showCancel:true});
+      panelPrimary.onclick=()=>{
+        const result=applyImportedPlan(data);
+        if(result.ok){
+          panelMessage.textContent='Plan loaded successfully. You can close this panel.';
+          configurePanelButtons({showPrimary:false,cancelLabel:'Close',showCancel:true});
+          render();
+        } else {
+          panelMessage.textContent=result.message||'Load failed.';
+        }
+      };
+    });
+  }
+  if(shareBtn){
+    shareBtn.addEventListener('click',()=>{
+      const data=buildSaveObject(state.startDate);
+      const shareText=encodePlanToShareText(data);
+      panel.classList.remove('hidden');
+      panelTitle.textContent='Share plan';
+      panelMessage.textContent='Copy this code to share your nudge planner with another user.';
+      configurePanelText({visible:true,value:shareText,readOnly:true});
+      const canCopy=!!(navigator.clipboard?.writeText);
+      if(canCopy){
+        configurePanelButtons({primaryLabel:'Copy',primaryHandler:noop,showPrimary:true,cancelLabel:'Close',showCancel:true});
+        panelPrimary.onclick=async()=>{
+          try{
+            await navigator.clipboard.writeText(shareText);
+            panelMessage.textContent='Copied! Share this code with another NightOwl user.';
+          }catch(err){
+            panelMessage.textContent='Copy failed. Please select the text manually.';
+          }
+        };
+      } else {
+        configurePanelButtons({showPrimary:false,cancelLabel:'Close',showCancel:true});
+      }
+    });
+  }
+  if(sharedBtn){
+    sharedBtn.addEventListener('click',()=>{
+      panel.classList.remove('hidden');
+      panelTitle.textContent='Load shared plan';
+      panelMessage.textContent='Paste a shared plan code below and load it.';
+      configurePanelText({visible:true,value:'',readOnly:false});
+      configurePanelButtons({primaryLabel:'Load',primaryHandler:noop,showPrimary:true,cancelLabel:'Cancel',showCancel:true});
+      panelPrimary.onclick=()=>{
+        const raw=panelText.value;
+        const parsed=decodeSharedPlan(raw);
+        if(!parsed.ok){
+          panelMessage.textContent=parsed.message||'Unable to read shared plan.';
+          return;
+        }
+        const result=applyImportedPlan(parsed.data);
+        if(result.ok){
+          panelMessage.textContent='Shared plan loaded. You can close this panel.';
+          configurePanelButtons({showPrimary:false,cancelLabel:'Close',showCancel:true});
+          render();
+        } else {
+          panelMessage.textContent=result.message||'Load failed.';
+        }
+      };
+    });
+  }
   panelCancel.addEventListener('click',closePanel);
   if(applyOverride){
     applyOverride.addEventListener('click',()=>{
