@@ -13,6 +13,16 @@
     const d=new Date(date.getTime());
     return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
   };
+  function parseDatetimeLocal(value){
+    if(!value) return null;
+    const [datePart,timePart=''] = value.split('T');
+    const [y,m,d]=datePart.split('-').map(Number);
+    const [hh='0',mm='0']=timePart.split(':');
+    const h=Number(hh),min=Number(mm);
+    if([y,m,d,h,min].some(n=>Number.isNaN(n))) return null;
+    if(m<1||m>12||d<1||d>31||h<0||h>23||min<0||min>59) return null;
+    return new Date(y,m-1,d,h,min);
+  }
 
   // ---------- helpers ----------
   const clamp=(n,min,max)=>Math.min(max,Math.max(min,n));
@@ -148,8 +158,8 @@
       render();
       return true;
     }
-    const parsed=new Date(value);
-    if(Number.isNaN(parsed.getTime())){
+    const parsed=parseDatetimeLocal(value);
+    if(!parsed||Number.isNaN(parsed.getTime())){
       updateOverrideUI('Invalid date/time. Please choose a valid value.');
       return false;
     }
@@ -357,7 +367,7 @@
     panelTitle.textContent='Export plan';
     panelMessage.textContent=message;
     configurePanelText({visible:false});
-    configurePanelButtons({primaryLabel:'Close',primaryHandler:closePanel,showPrimary:true,showCancel:false});
+    configurePanelButtons({showPrimary:false,cancelLabel:'Close',showCancel:true});
   });
   importBtn.addEventListener('click',()=>{
     panel.classList.remove('hidden');
@@ -382,12 +392,12 @@
     }
     configurePanelText({visible:true,value:JSON.stringify(data,null,2),readOnly:true});
     panelMessage.textContent='Load the plan saved in this browser?';
-    configurePanelButtons({primaryLabel:'Load',primaryHandler:noop,showPrimary:true,showCancel:true});
+    configurePanelButtons({primaryLabel:'Load',primaryHandler:noop,showPrimary:true,cancelLabel:'Cancel',showCancel:true});
     panelPrimary.onclick=()=>{
       const result=applyImportedPlan(data);
       if(result.ok){
         panelMessage.textContent='Plan imported successfully. You can close this panel.';
-        configurePanelButtons({primaryLabel:'Load',primaryHandler:noop,showPrimary:false,showCancel:true});
+        configurePanelButtons({showPrimary:false,cancelLabel:'Close',showCancel:true});
         render();
       } else {
         panelMessage.textContent=result.message||'Import failed.';
