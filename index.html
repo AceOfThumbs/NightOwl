@@ -183,6 +183,53 @@
       </section>
     </div>
 
+    <div
+      id="toastContainer"
+      class="toast-container"
+      role="status"
+      aria-live="polite"
+      aria-atomic="true"
+    ></div>
+
+    <div id="shareLayer" class="share-layer" hidden>
+      <div class="share-layer__backdrop" data-share-close></div>
+      <div
+        class="share-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="shareDialogTitle"
+      >
+        <button
+          type="button"
+          class="share-dialog__close"
+          data-share-close
+          aria-label="Close share dialog"
+        >
+          ×
+        </button>
+        <h2 id="shareDialogTitle">Share your plan</h2>
+        <p class="sub">
+          Send this link to share your current schedule. Anyone with the link can
+          load these settings.
+        </p>
+        <label class="label" for="shareLinkInput">Share link</label>
+        <input
+          id="shareLinkInput"
+          class="share-dialog__input"
+          type="text"
+          readonly
+        />
+        <div class="share-dialog__buttons">
+          <button id="shareCopyLink" class="btn" type="button">Copy link</button>
+          <button id="shareCopyCode" class="btn" type="button">Copy code</button>
+        </div>
+        <div>
+          <div class="label">Share code</div>
+          <div id="shareCode" class="share-code" aria-live="polite"></div>
+        </div>
+      </div>
+    </div>
+
     <script src="nightowl.js"></script>
   </body>
 </html>
