@@ -14,10 +14,7 @@
           <h1>NightOwl</h1>
           <p class="muted">Shift-aware clock and circadian planner</p>
         </div>
-        <div class="icon-row" aria-hidden>
-          <span class="sun">☀️</span>
-          <span class="moon">🌙</span>
-        </div>
+        <div id="kofi-slot"></div>
       </header>
 
       <main class="grid">
@@ -187,6 +184,25 @@
     <script>
       kofiwidget2.init("Support me on Ko-fi", "#72a4f2", "G2G2I3KYW");
       kofiwidget2.draw();
+
+      function attachKofiWidget() {
+        const overlay = document.getElementById("kofiwidget-overlay");
+        const slot = document.getElementById("kofi-slot");
+        if (!overlay || !slot) {
+          requestAnimationFrame(attachKofiWidget);
+          return;
+        }
+
+        slot.replaceChildren(overlay);
+        overlay.style.position = "static";
+        overlay.style.top = "";
+        overlay.style.right = "";
+        overlay.style.bottom = "";
+        overlay.style.left = "";
+        overlay.style.marginLeft = "auto";
+      }
+
+      requestAnimationFrame(attachKofiWidget);
     </script>
   </body>
 </html>
