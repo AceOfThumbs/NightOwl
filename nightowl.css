@@ -9,7 +9,6 @@ body{margin:0;background:var(--bg);color:var(--ink);font-family:system-ui,Segoe 
 .header{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px}
 .header h1{margin:0;font-size:28px;color:#EAF2FF}
 .muted{color:var(--muted);margin:4px 0 0}
-.icon-row{display:flex;gap:8px;font-size:20px}
 .sun,.moon{filter:saturate(1.2)}
 .grid{display:grid;grid-template-columns:2fr 1fr;gap:16px}
 .col{display:flex;flex-direction:column}
@@ -45,6 +44,25 @@ textarea{width:100%;height:160px}
 .hidden{display:none}
 #overrideCard{margin-top:16px}
 
+.header #kofi-slot{
+  margin-left:auto;
+  display:flex;
+  align-items:center;
+  justify-content:flex-end;
+}
+
+.header #kofiwidget-overlay{
+  display:flex!important;
+  align-items:center;
+  position:static!important;
+  inset:auto!important;
+  z-index:auto!important;
+}
+
+.header #kofiwidget-overlay .kofiwidget-button{
+  box-shadow:0 8px 24px rgba(0,0,0,0.35);
+}
+
 @media (max-width:500px){
   .container{padding:16px}
   .grid{grid-template-columns:1fr}
@@ -54,6 +72,8 @@ textarea{width:100%;height:160px}
 
 @media (max-width:500px){
   .header{flex-direction:column;align-items:flex-start;gap:12px}
-  .icon-row{font-size:18px}
+  .header #kofi-slot{margin-left:0;align-self:stretch}
+  .header #kofiwidget-overlay{margin-left:0;align-self:stretch}
+  .header #kofiwidget-overlay .kofiwidget-button{width:100%}
   .container{padding:12px}
 }
