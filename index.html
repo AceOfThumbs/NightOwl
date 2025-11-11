@@ -42,7 +42,10 @@
               </div>
               <div class="clock-meta">
                 <div class="label">Feels Like</div>
-                <div id="feelsLike" class="big"></div>
+                <div class="clock-meta__display">
+                  <div id="feelsLike" class="big"></div>
+                  <div id="clockDate" class="clock-date"></div>
+                </div>
                 <div class="sub">Time zone: <strong>Local</strong></div>
                 <div class="row">
                   <span class="label">Display</span>
@@ -109,7 +112,7 @@
                 </select>
               </div>
               <div class="field">
-                <label>Target <span id="plannerModeLabel">wake</span> time (<span id="tzLabel">Local</span>)</label>
+                <label>Target <span id="plannerModeLabel">wake</span> time</label>
                 <input id="targetTime" type="time" />
               </div>
             </div>
@@ -130,28 +133,15 @@
               </div>
             </div>
 
-            <div class="row space">
+            <div class="planner-actions">
               <div>
                 <div class="label">Suggested schedule</div>
                 <div class="sub">(local time)</div>
               </div>
-              <div class="row">
+              <div class="row planner-actions__buttons">
                 <button id="saveBtn" class="btn">Save</button>
                 <button id="loadBtn" class="btn">Load</button>
-              </div>
-            </div>
-
-            <!-- Data panel (export/import textarea) -->
-            <div id="dataPanel" class="panel hidden">
-              <div class="panel-head">
-                <div class="label" id="panelTitle"></div>
-                <div class="sub" id="panelMessage"></div>
-              </div>
-              <textarea id="panelText" placeholder='{"version":1, ...}'></textarea>
-              <div class="row">
-                <button id="panelPrimary" class="btn primary hidden"></button>
-                <button id="panelSecondary" class="btn hidden"></button>
-                <button id="panelCancel" class="btn">Close</button>
+                <button id="shareBtn" class="btn">Share</button>
               </div>
             </div>
 
