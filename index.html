@@ -14,7 +14,21 @@
           <h1>NightOwl</h1>
           <p class="muted">Shift-aware clock and circadian planner</p>
         </div>
-        <div id="kofi-slot"></div>
+        <div id="kofi-slot">
+          <a
+            href="https://ko-fi.com/G2G2I3KYW"
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label="Support me on Ko-fi"
+          >
+            <img
+              src="https://storage.ko-fi.com/cdn/kofi6.png?v=6"
+              alt="Support me on Ko-fi"
+              height="36"
+              style="border: 0; height: 36px"
+            />
+          </a>
+        </div>
       </header>
 
       <main class="grid">
@@ -180,30 +194,6 @@
     </div>
 
     <script src="nightowl.js"></script>
-    <script src="https://storage.ko-fi.com/cdn/widget/Widget_2.js"></script>
-    <script>
-      kofiwidget2.init("Support me on Ko-fi", "#72a4f2", "G2G2I3KYW");
-      kofiwidget2.draw();
-
-      function attachKofiWidget() {
-        const overlay = document.getElementById("kofiwidget-overlay");
-        const slot = document.getElementById("kofi-slot");
-        if (!overlay || !slot) {
-          requestAnimationFrame(attachKofiWidget);
-          return;
-        }
-
-        slot.replaceChildren(overlay);
-        overlay.style.position = "static";
-        overlay.style.top = "";
-        overlay.style.right = "";
-        overlay.style.bottom = "";
-        overlay.style.left = "";
-        overlay.style.marginLeft = "auto";
-      }
-
-      requestAnimationFrame(attachKofiWidget);
-    </script>
   </body>
 </html>
 
