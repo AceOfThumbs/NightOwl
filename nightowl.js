@@ -115,6 +115,12 @@
   const saveBtn=$('saveBtn');
   const loadBtn=$('loadBtn');
   const shareBtn=$('shareBtn');
+  const toastContainer=$('toastContainer');
+  const shareLayer=$('shareLayer');
+  const shareLinkInput=$('shareLinkInput');
+  const shareCodeEl=$('shareCode');
+  const shareCopyLink=$('shareCopyLink');
+  const shareCopyCode=$('shareCopyCode');
   const overrideInput=$('overrideInput');
   const applyOverride=$('applyOverride');
   const clearOverride=$('clearOverride');
@@ -131,6 +137,84 @@
     }
     if(overrideInput&&document.activeElement!==overrideInput){
       overrideInput.value=overrideNowDate?formatDatetimeLocal(overrideNowDate):'';
+    }
+  }
+
+  function showToast(message,variant='info',duration=3400){
+    if(!toastContainer){
+      if(typeof window!=='undefined'&&typeof window.alert==='function'){
+        window.alert(message);
+      }
+      return;
+    }
+    const toast=document.createElement('div');
+    const variantClass=`toast--${variant||'info'}`;
+    toast.classList.add('toast',variantClass);
+    toast.textContent=message;
+    toastContainer.appendChild(toast);
+    requestAnimationFrame(()=>{
+      requestAnimationFrame(()=>toast.classList.add('toast--visible'));
+    });
+    const remove=()=>{
+      toast.classList.remove('toast--visible');
+      setTimeout(()=>toast.remove(),250);
+    };
+    const timeout=setTimeout(remove,duration);
+    toast.addEventListener('click',()=>{
+      clearTimeout(timeout);
+      remove();
+    });
+  }
+
+  async function copyTextToClipboard(text){
+    if(!text) return false;
+    try{
+      if(typeof navigator!=='undefined'&&navigator.clipboard?.writeText){
+        await navigator.clipboard.writeText(text);
+        return true;
+      }
+    }catch(err){/* ignore */}
+    if(typeof document==='undefined'||!document.body) return false;
+    try{
+      const textarea=document.createElement('textarea');
+      textarea.value=text;
+      textarea.setAttribute('readonly','');
+      textarea.style.position='fixed';
+      textarea.style.opacity='0';
+      document.body.appendChild(textarea);
+      textarea.focus();
+      textarea.select();
+      const result=document.execCommand('copy');
+      document.body.removeChild(textarea);
+      return result;
+    }catch(err){
+      return false;
+    }
+  }
+
+  let lastFocusedBeforeShare=null;
+  function isShareOpen(){
+    return !!(shareLayer&&!shareLayer.hasAttribute('hidden'));
+  }
+  function openShareDialog(link,code){
+    if(!shareLayer) return;
+    lastFocusedBeforeShare=document.activeElement instanceof HTMLElement?document.activeElement:null;
+    shareLayer.hidden=false;
+    if(shareLinkInput){
+      shareLinkInput.value=link||'';
+      try{shareLinkInput.focus({preventScroll:true});}
+      catch(e){shareLinkInput.focus();}
+      shareLinkInput.select();
+    }
+    if(shareCodeEl){
+      shareCodeEl.textContent=code||'';
+    }
+  }
+  function closeShareDialog(){
+    if(!shareLayer) return;
+    shareLayer.hidden=true;
+    if(lastFocusedBeforeShare&&typeof lastFocusedBeforeShare.focus==='function'){
+      lastFocusedBeforeShare.focus();
     }
   }
   function applyOverrideValue(value){
@@ -334,9 +418,7 @@
     if(!code) return false;
     const parsed=decodeSharedPlan(code);
     if(!parsed.ok){
-      if(typeof window!=='undefined'&&typeof window.alert==='function'){
-        window.alert(parsed.message||'Unable to load shared plan from link.');
-      }
+      showToast(parsed.message||'Unable to load shared plan from link.','error');
       return false;
     }
     const result=applyImportedPlan(parsed.data);
@@ -347,14 +429,10 @@
         const newUrl=`${window.location.pathname}${query?`?${query}`:''}${window.location.hash||''}`;
         window.history.replaceState(null,'',newUrl);
       }
-      if(typeof window!=='undefined'&&typeof window.alert==='function'){
-        window.alert('Shared plan loaded from link.');
-      }
+      showToast('Shared plan loaded from link.','success');
       return true;
     }
-    if(typeof window!=='undefined'&&typeof window.alert==='function'){
-      window.alert(result.message||'Unable to load shared plan from link.');
-    }
+    showToast(result.message||'Unable to load shared plan from link.','error');
     return false;
   }
 
@@ -515,9 +593,10 @@
   if(saveBtn){
     saveBtn.addEventListener('click',()=>{
       const result=save();
-      const message=result?.ok!==false? 'Plan saved to this browser.' : `Save failed: ${result?.error||'storage error'}`;
-      if(typeof window!=='undefined'&&typeof window.alert==='function'){
-        window.alert(message);
+      if(result?.ok!==false){
+        showToast('Saved','success');
+      } else {
+        showToast(`Save failed: ${result?.error||'storage error'}`,'error');
       }
     });
   }
@@ -526,37 +605,29 @@
       try{
         const raw=localStorage.getItem(TRANSFER_KEY)||localStorage.getItem(STORAGE_KEY);
         if(!raw){
-          if(typeof window!=='undefined'&&typeof window.alert==='function'){
-            window.alert('No saved plan found in this browser.');
-          }
+          showToast('No saved plan found in this browser.','error');
           return;
         }
         let data;
         try{data=JSON.parse(raw);}catch(err){
-          if(typeof window!=='undefined'&&typeof window.alert==='function'){
-            window.alert('Saved plan is corrupted: '+(err?.message||'Parse error'));
-          }
+          showToast('Saved plan is corrupted: '+(err?.message||'Parse error'),'error');
           return;
         }
         const result=applyImportedPlan(data);
         if(result.ok){
           render();
           maybeShowWakeReminder();
-          if(typeof window!=='undefined'&&typeof window.alert==='function'){
-            window.alert('Plan loaded successfully.');
-          }
-        } else if(typeof window!=='undefined'&&typeof window.alert==='function'){
-          window.alert(result.message||'Load failed.');
+          showToast('Loaded','success');
+        } else {
+          showToast(result.message||'Load failed.','error');
         }
       }catch(err){
-        if(typeof window!=='undefined'&&typeof window.alert==='function'){
-          window.alert('Unable to access browser storage: '+(err?.message||'storage error'));
-        }
+        showToast('Unable to access browser storage: '+(err?.message||'storage error'),'error');
       }
     });
   }
   if(shareBtn){
-    shareBtn.addEventListener('click',()=>{
+    shareBtn.addEventListener('click',async()=>{
       const data=buildSaveObject(state.startDate);
       save();
       const shareCode=encodePlanToShareText(data);
@@ -572,9 +643,19 @@
           linkText=`${origin}${path}?plan=${encodeURIComponent(shareCode)}`;
         }
       }
-      if(typeof window!=='undefined'&&typeof window.alert==='function'){
-        window.alert(`Share this link with someone you trust:\n${linkText}`);
+      const shareData={title:'NightOwl plan',url:linkText};
+      if(typeof navigator!=='undefined'&&navigator.share){
+        try{
+          if(!navigator.canShare||navigator.canShare(shareData)){
+            await navigator.share(shareData);
+            return;
+          }
+        }catch(err){
+          if(err?.name==='AbortError') return;
+          showToast('Unable to open share sheet. Copy the link manually.','error');
+        }
       }
+      openShareDialog(linkText,shareCode);
     });
   }
   if(applyOverride){
@@ -589,6 +670,43 @@
       applyOverrideValue('');
     });
   }
+
+  if(shareLayer){
+    shareLayer.addEventListener('click',e=>{
+      const target=e.target;
+      if(typeof Element!=='undefined'&&target instanceof Element&&target.hasAttribute('data-share-close')){
+        closeShareDialog();
+      }
+    });
+  }
+  if(shareCopyLink){
+    shareCopyLink.addEventListener('click',async()=>{
+      const text=shareLinkInput?.value||'';
+      const ok=await copyTextToClipboard(text);
+      if(ok){
+        showToast('Link copied to clipboard.','success');
+      }else{
+        showToast('Unable to copy link. Please copy manually.','error');
+      }
+    });
+  }
+  if(shareCopyCode){
+    shareCopyCode.addEventListener('click',async()=>{
+      const text=shareCodeEl?.textContent||'';
+      const ok=await copyTextToClipboard(text);
+      if(ok){
+        showToast('Code copied to clipboard.','success');
+      }else{
+        showToast('Unable to copy code. Please copy manually.','error');
+      }
+    });
+  }
+  document.addEventListener('keydown',e=>{
+    if(e.key==='Escape'&&isShareOpen()){
+      e.preventDefault();
+      closeShareDialog();
+    }
+  });
 
   // clock tick
   setInterval(()=>render(),30000);
