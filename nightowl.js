@@ -104,7 +104,6 @@
   const plannerMode=$('plannerMode');
   const plannerModeLabel=$('plannerModeLabel');
   const timeZone=$('timeZone');
-  const tzLabel=$('tzLabel');
   const targetTime=$('targetTime');
   const dailyStep=$('dailyStep');
   const dailyStepLabel=$('dailyStepLabel');
@@ -112,52 +111,14 @@
   const dirButtons=Array.from(document.querySelectorAll('[data-dir]'));
   const yourDay=$('yourDay');
   const analogClock=$('analogClock');
+  const clockDate=$('clockDate');
   const saveBtn=$('saveBtn');
   const loadBtn=$('loadBtn');
-  const panel=$('dataPanel');
-  const panelTitle=$('panelTitle');
-  const panelMessage=$('panelMessage');
-  const panelText=$('panelText');
-  const panelPrimary=$('panelPrimary');
-  const panelSecondary=$('panelSecondary');
-  const panelCancel=$('panelCancel');
+  const shareBtn=$('shareBtn');
   const overrideInput=$('overrideInput');
   const applyOverride=$('applyOverride');
   const clearOverride=$('clearOverride');
   const overrideStatus=$('overrideStatus');
-  function configurePanelText({visible,value='',readOnly=false}={}){
-    if(!panelText) return;
-    panelText.value=value;
-    panelText.readOnly=!!readOnly;
-    if(visible){
-      panelText.classList.remove('hidden');
-    } else {
-      panelText.classList.add('hidden');
-    }
-  }
-  function configurePanelButtons({primaryLabel,primaryHandler,showPrimary=true,secondaryLabel,secondaryHandler,showSecondary=false,cancelLabel='Close',showCancel=true}={}){
-    if(panelPrimary){
-      if(primaryLabel!==undefined) panelPrimary.textContent=primaryLabel;
-      panelPrimary.onclick=typeof primaryHandler==='function'?primaryHandler:noop;
-      panelPrimary.classList.toggle('hidden',!showPrimary);
-    }
-    if(panelSecondary){
-      if(secondaryLabel!==undefined) panelSecondary.textContent=secondaryLabel;
-      panelSecondary.onclick=typeof secondaryHandler==='function'?secondaryHandler:noop;
-      panelSecondary.classList.toggle('hidden',!showSecondary);
-    }
-    if(panelCancel){
-      if(cancelLabel!==undefined) panelCancel.textContent=cancelLabel;
-      panelCancel.classList.toggle('hidden',!showCancel);
-    }
-  }
-  const closePanel=()=>{
-    if(panel) panel.classList.add('hidden');
-    if(panelTitle) panelTitle.textContent='';
-    if(panelMessage) panelMessage.textContent='';
-    configurePanelText({visible:false});
-    configurePanelButtons({showPrimary:false,showSecondary:false,showCancel:false});
-  };
   function updateOverrideUI(customMessage){
     if(overrideStatus){
       if(customMessage){
@@ -210,18 +171,10 @@
   }
   function maybeShowWakeReminder(){
     if(!wakeReminderMessage) return;
-    if(panel&&panelMessage&&panelTitle){
-      if(panel.classList.contains('hidden')){
-        panel.classList.remove('hidden');
-        panelTitle.textContent='Check today\'s wake time';
-        panelMessage.textContent=wakeReminderMessage;
-        configurePanelText({visible:false});
-        configurePanelButtons({showPrimary:false,showSecondary:false,cancelLabel:'Close',showCancel:true});
-      } else {
-        panelMessage.textContent=`${panelMessage.textContent} ${wakeReminderMessage}`.trim();
-      }
-    } else if(typeof window!=='undefined'&&typeof window.alert==='function'){
+    if(typeof window!=='undefined'&&typeof window.alert==='function'){
       window.alert(wakeReminderMessage);
+    } else {
+      console.info(wakeReminderMessage);
     }
     wakeReminderMessage=null;
   }
@@ -300,7 +253,13 @@
   }
   function save(){
     const payload=buildSaveObject(state.startDate);
-    try{localStorage.setItem(STORAGE_KEY,JSON.stringify(payload));}catch{}
+    let ok=true;
+    let error=null;
+    try{localStorage.setItem(STORAGE_KEY,JSON.stringify(payload));}
+    catch(err){ok=false; error=err?.message||'storage error';}
+    try{localStorage.setItem(TRANSFER_KEY,JSON.stringify(payload));}
+    catch(err){ok=false; if(!error) error=err?.message||'storage error';}
+    return {ok,error};
   }
   function applyImportedPlan(data){
     if(data?.version!==1) return {ok:false,message:'Invalid plan data: missing version 1.'};
@@ -363,6 +322,41 @@
       }
     }catch(e){console.warn('load failed',e)}
   }
+  function loadSharedPlanFromURL(){
+    if(typeof window==='undefined'||!window.location) return false;
+    let params;
+    try{
+      params=new URLSearchParams(window.location.search);
+    }catch(err){
+      return false;
+    }
+    const code=params.get('plan');
+    if(!code) return false;
+    const parsed=decodeSharedPlan(code);
+    if(!parsed.ok){
+      if(typeof window!=='undefined'&&typeof window.alert==='function'){
+        window.alert(parsed.message||'Unable to load shared plan from link.');
+      }
+      return false;
+    }
+    const result=applyImportedPlan(parsed.data);
+    if(result.ok){
+      if(typeof window!=='undefined'&&window.history?.replaceState){
+        params.delete('plan');
+        const query=params.toString();
+        const newUrl=`${window.location.pathname}${query?`?${query}`:''}${window.location.hash||''}`;
+        window.history.replaceState(null,'',newUrl);
+      }
+      if(typeof window!=='undefined'&&typeof window.alert==='function'){
+        window.alert('Shared plan loaded from link.');
+      }
+      return true;
+    }
+    if(typeof window!=='undefined'&&typeof window.alert==='function'){
+      window.alert(result.message||'Unable to load shared plan from link.');
+    }
+    return false;
+  }
 
   // ---------- logic ----------
   function rollForwardToToday(data){
@@ -409,7 +403,7 @@
     targetDate.value=state.targetDate;
     plannerMode.value=state.plannerMode;
     plannerModeLabel.textContent=state.plannerMode;
-    timeZone.value=state.timeZone; tzLabel.textContent=state.timeZone==='local'?'Local':state.timeZone;
+    timeZone.value=state.timeZone;
     targetTime.value=state.targetTime;
     dailyStep.value=String(state.dailyStep); dailyStepLabel.textContent=String(state.dailyStep);
 
@@ -439,8 +433,8 @@
     const now=getNow(); const nowM=now.getHours()*60+now.getMinutes();
     const normalWake=7*60; const bioOffset=modDay(wakeM-normalWake);
     const bioMinutes=modDay(nowM-bioOffset);
-    const feelsEl=$('feelsLike');
-    if(feelsEl) feelsEl.textContent=state.show12h?format12h(bioMinutes):`${pad(Math.floor(bioMinutes/60))}:${pad(bioMinutes%60)}`;
+    if(feelsLike) feelsLike.textContent=state.show12h?format12h(bioMinutes):`${pad(Math.floor(bioMinutes/60))}:${pad(bioMinutes%60)}`;
+    if(clockDate) clockDate.textContent=now.toLocaleDateString(undefined,{weekday:'short',month:'short',day:'numeric'});
     if(toggleFormat) toggleFormat.textContent=state.show12h?'12-hour':'24-hour';
     if(analogClock) drawClock(analogClock,bioMinutes);
 
@@ -501,8 +495,8 @@
   if(wakeDuration) wakeDuration.addEventListener('input',e=>{state.wakeDuration=clamp(Number(e.target.value),720,1200);state.startDate=todayAsYYYYMMDD();save();render()});
   if(toggleFormat) toggleFormat.addEventListener('click',()=>{state.show12h=!state.show12h;render()});
   if(targetDate) targetDate.addEventListener('input',e=>{state.targetDate=e.target.value;state.startDate=todayAsYYYYMMDD();save();render()});
-  if(plannerMode) plannerMode.addEventListener('change',e=>{state.plannerMode=e.target.value;$('plannerModeLabel').textContent=state.plannerMode;state.startDate=todayAsYYYYMMDD();save();render()});
-  if(timeZone) timeZone.addEventListener('change',e=>{state.timeZone=e.target.value;tzLabel.textContent=state.timeZone==='local'?'Local':state.timeZone;state.startDate=todayAsYYYYMMDD();save();render()});
+  if(plannerMode) plannerMode.addEventListener('change',e=>{state.plannerMode=e.target.value;if(plannerModeLabel) plannerModeLabel.textContent=state.plannerMode;state.startDate=todayAsYYYYMMDD();save();render()});
+  if(timeZone) timeZone.addEventListener('change',e=>{state.timeZone=e.target.value;state.startDate=todayAsYYYYMMDD();save();render()});
   if(targetTime) targetTime.addEventListener('input',e=>{state.targetTime=e.target.value;state.startDate=todayAsYYYYMMDD();save();render()});
   if(dailyStep) dailyStep.addEventListener('input',e=>{state.dailyStep=clamp(Number(e.target.value),5,240);dailyStepLabel.textContent=String(state.dailyStep);state.startDate=todayAsYYYYMMDD();save();render()});
   dirButtons.forEach(btn=>{
@@ -520,175 +514,69 @@
 
   if(saveBtn){
     saveBtn.addEventListener('click',()=>{
-      if(!panel||!panelTitle||!panelMessage) return;
-      const data=buildSaveObject(state.startDate);
-      let message='Plan saved to this browser. Use Load to restore it later or Share to send it to another user.';
-      try{localStorage.setItem(TRANSFER_KEY,JSON.stringify(data));}
-      catch(err){message='Save failed: '+(err?.message||'storage error');}
-      const showShareCode=()=>{
-        const shareText=encodePlanToShareText(data);
-        panelTitle.textContent='Save plan';
-        configurePanelText({visible:true,value:shareText,readOnly:true});
-        const canCopy=!!(navigator.clipboard?.writeText);
-        if(canCopy){
-          panelMessage.textContent='Copy this code to share your nudge planner with another user.';
-          configurePanelButtons({
-            primaryLabel:'Copy',
-            primaryHandler:async()=>{
-              try{
-                await navigator.clipboard.writeText(shareText);
-                panelMessage.textContent='Copied! Share this code with another NightOwl user.';
-              }catch(err){
-                panelMessage.textContent='Copy failed. Please select the text manually.';
-              }
-            },
-            showPrimary:true,
-            secondaryLabel:'Share',
-            secondaryHandler:showShareCode,
-            showSecondary:true,
-            cancelLabel:'Close',
-            showCancel:true
-          });
-        } else {
-          panelMessage.textContent='Copy this code to share your nudge planner with another user. Select the text below and copy it manually.';
-          configurePanelButtons({
-            showPrimary:false,
-            secondaryLabel:'Share',
-            secondaryHandler:showShareCode,
-            showSecondary:true,
-            cancelLabel:'Close',
-            showCancel:true
-          });
-        }
-      };
-
-      panel.classList.remove('hidden');
-      panelTitle.textContent='Save plan';
-      panelMessage.textContent=message;
-      configurePanelText({visible:false});
-      configurePanelButtons({
-        showPrimary:false,
-        secondaryLabel:'Share',
-        secondaryHandler:showShareCode,
-        showSecondary:true,
-        cancelLabel:'Close',
-        showCancel:true
-      });
+      const result=save();
+      const message=result?.ok!==false? 'Plan saved to this browser.' : `Save failed: ${result?.error||'storage error'}`;
+      if(typeof window!=='undefined'&&typeof window.alert==='function'){
+        window.alert(message);
+      }
     });
   }
-  const showSharedPanel=()=>{
-    if(!panel||!panelTitle||!panelMessage) return;
-    panelTitle.textContent='Load shared plan';
-    panelMessage.textContent='Paste a shared plan code below and load it.';
-    configurePanelText({visible:true,value:'',readOnly:false});
-    configurePanelButtons({
-      primaryLabel:'Load',
-      primaryHandler:()=>{
-        const raw=panelText?.value||'';
-        const parsed=decodeSharedPlan(raw);
-        if(!parsed.ok){
-          panelMessage.textContent=parsed.message||'Unable to read shared plan.';
-          return;
-        }
-        const result=applyImportedPlan(parsed.data);
-        if(result.ok){
-          panelMessage.textContent='Shared plan loaded. You can close this panel.';
-          configurePanelButtons({
-            showPrimary:false,
-            secondaryLabel:'Shared',
-            secondaryHandler:showSharedPanel,
-            showSecondary:true,
-            cancelLabel:'Close',
-            showCancel:true
-          });
-          render();
-          maybeShowWakeReminder();
-        } else {
-          panelMessage.textContent=result.message||'Load failed.';
-        }
-      },
-      showPrimary:true,
-      showSecondary:false,
-      cancelLabel:'Cancel',
-      showCancel:true
-    });
-  };
   if(loadBtn){
     loadBtn.addEventListener('click',()=>{
-      if(!panel||!panelTitle||!panelMessage) return;
-      panel.classList.remove('hidden');
-      panelTitle.textContent='Load plan';
-      configurePanelText({visible:false});
-      let raw=null;
-      try{raw=localStorage.getItem(TRANSFER_KEY);}catch(err){
-        panelMessage.textContent='Unable to access browser storage: '+(err?.message||'storage error');
-        configurePanelButtons({
-          showPrimary:false,
-          secondaryLabel:'Shared',
-          secondaryHandler:showSharedPanel,
-          showSecondary:true,
-          cancelLabel:'Close',
-          showCancel:true
-        });
-        return;
-      }
-      if(!raw){
-        panelMessage.textContent='No saved plan found in this browser. You can still load a shared plan.';
-        configurePanelButtons({
-          showPrimary:false,
-          secondaryLabel:'Shared',
-          secondaryHandler:showSharedPanel,
-          showSecondary:true,
-          cancelLabel:'Close',
-          showCancel:true
-        });
-        return;
-      }
-      let data;
-      try{data=JSON.parse(raw);}catch(err){
-        panelMessage.textContent='Saved plan is corrupted: '+(err?.message||'Parse error');
-        configurePanelButtons({
-          showPrimary:false,
-          secondaryLabel:'Shared',
-          secondaryHandler:showSharedPanel,
-          showSecondary:true,
-          cancelLabel:'Close',
-          showCancel:true
-        });
-        return;
-      }
-      configurePanelText({visible:true,value:JSON.stringify(data,null,2),readOnly:true});
-      panelMessage.textContent='Load the plan saved in this browser?';
-      configurePanelButtons({
-        primaryLabel:'Load',
-        primaryHandler:()=>{
-          const result=applyImportedPlan(data);
-          if(result.ok){
-            panelMessage.textContent='Plan loaded successfully. You can close this panel.';
-            configurePanelButtons({
-              showPrimary:false,
-              secondaryLabel:'Shared',
-              secondaryHandler:showSharedPanel,
-              showSecondary:true,
-              cancelLabel:'Close',
-              showCancel:true
-            });
-            render();
-            maybeShowWakeReminder();
-          } else {
-            panelMessage.textContent=result.message||'Load failed.';
+      try{
+        const raw=localStorage.getItem(TRANSFER_KEY)||localStorage.getItem(STORAGE_KEY);
+        if(!raw){
+          if(typeof window!=='undefined'&&typeof window.alert==='function'){
+            window.alert('No saved plan found in this browser.');
           }
-        },
-        showPrimary:true,
-        secondaryLabel:'Shared',
-        secondaryHandler:showSharedPanel,
-        showSecondary:true,
-        cancelLabel:'Cancel',
-        showCancel:true
-      });
+          return;
+        }
+        let data;
+        try{data=JSON.parse(raw);}catch(err){
+          if(typeof window!=='undefined'&&typeof window.alert==='function'){
+            window.alert('Saved plan is corrupted: '+(err?.message||'Parse error'));
+          }
+          return;
+        }
+        const result=applyImportedPlan(data);
+        if(result.ok){
+          render();
+          maybeShowWakeReminder();
+          if(typeof window!=='undefined'&&typeof window.alert==='function'){
+            window.alert('Plan loaded successfully.');
+          }
+        } else if(typeof window!=='undefined'&&typeof window.alert==='function'){
+          window.alert(result.message||'Load failed.');
+        }
+      }catch(err){
+        if(typeof window!=='undefined'&&typeof window.alert==='function'){
+          window.alert('Unable to access browser storage: '+(err?.message||'storage error'));
+        }
+      }
     });
   }
-  if(panelCancel) panelCancel.addEventListener('click',closePanel);
+  if(shareBtn){
+    shareBtn.addEventListener('click',()=>{
+      const data=buildSaveObject(state.startDate);
+      save();
+      const shareCode=encodePlanToShareText(data);
+      let linkText=shareCode;
+      if(typeof window!=='undefined'&&window.location){
+        try{
+          const url=new URL(window.location.href);
+          url.searchParams.set('plan',shareCode);
+          linkText=url.toString();
+        }catch(err){
+          const origin=window.location.origin||'';
+          const path=window.location.pathname||'';
+          linkText=`${origin}${path}?plan=${encodeURIComponent(shareCode)}`;
+        }
+      }
+      if(typeof window!=='undefined'&&typeof window.alert==='function'){
+        window.alert(`Share this link with someone you trust:\n${linkText}`);
+      }
+    });
+  }
   if(applyOverride){
     applyOverride.addEventListener('click',()=>{
       if(!overrideInput) return;
@@ -720,7 +608,10 @@
       }
     }catch{}
     updateOverrideUI();
-    load(); save(); render();
+    load();
+    loadSharedPlanFromURL();
+    save();
+    render();
     maybeShowWakeReminder();
   })();
 })();
