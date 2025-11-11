@@ -376,7 +376,6 @@
         queueWakeReminder(result.plannedWake);
       }
     }
-    save();
     return {ok:true};
   }
   function load(){
@@ -569,14 +568,14 @@
   function lerp(a,b,t){const A=hexToRgb(a),B=hexToRgb(b);const u=Math.max(0,Math.min(1,t));return rgbToHex(A.r+(B.r-A.r)*u,A.g+(B.g-A.g)*u,A.b+(B.b-A.b)*u)}
 
   // ---------- events ----------
-  if(wakeInput) wakeInput.addEventListener('input',e=>{state.wake=e.target.value;state.startDate=todayAsYYYYMMDD();save();render()});
-  if(wakeDuration) wakeDuration.addEventListener('input',e=>{state.wakeDuration=clamp(Number(e.target.value),720,1200);state.startDate=todayAsYYYYMMDD();save();render()});
+  if(wakeInput) wakeInput.addEventListener('input',e=>{state.wake=e.target.value;state.startDate=todayAsYYYYMMDD();render()});
+  if(wakeDuration) wakeDuration.addEventListener('input',e=>{state.wakeDuration=clamp(Number(e.target.value),720,1200);state.startDate=todayAsYYYYMMDD();render()});
   if(toggleFormat) toggleFormat.addEventListener('click',()=>{state.show12h=!state.show12h;render()});
-  if(targetDate) targetDate.addEventListener('input',e=>{state.targetDate=e.target.value;state.startDate=todayAsYYYYMMDD();save();render()});
-  if(plannerMode) plannerMode.addEventListener('change',e=>{state.plannerMode=e.target.value;if(plannerModeLabel) plannerModeLabel.textContent=state.plannerMode;state.startDate=todayAsYYYYMMDD();save();render()});
-  if(timeZone) timeZone.addEventListener('change',e=>{state.timeZone=e.target.value;state.startDate=todayAsYYYYMMDD();save();render()});
-  if(targetTime) targetTime.addEventListener('input',e=>{state.targetTime=e.target.value;state.startDate=todayAsYYYYMMDD();save();render()});
-  if(dailyStep) dailyStep.addEventListener('input',e=>{state.dailyStep=clamp(Number(e.target.value),5,240);dailyStepLabel.textContent=String(state.dailyStep);state.startDate=todayAsYYYYMMDD();save();render()});
+  if(targetDate) targetDate.addEventListener('input',e=>{state.targetDate=e.target.value;state.startDate=todayAsYYYYMMDD();render()});
+  if(plannerMode) plannerMode.addEventListener('change',e=>{state.plannerMode=e.target.value;if(plannerModeLabel) plannerModeLabel.textContent=state.plannerMode;state.startDate=todayAsYYYYMMDD();render()});
+  if(timeZone) timeZone.addEventListener('change',e=>{state.timeZone=e.target.value;state.startDate=todayAsYYYYMMDD();render()});
+  if(targetTime) targetTime.addEventListener('input',e=>{state.targetTime=e.target.value;state.startDate=todayAsYYYYMMDD();render()});
+  if(dailyStep) dailyStep.addEventListener('input',e=>{state.dailyStep=clamp(Number(e.target.value),5,240);dailyStepLabel.textContent=String(state.dailyStep);state.startDate=todayAsYYYYMMDD();render()});
   dirButtons.forEach(btn=>{
     btn.setAttribute('aria-pressed','false');
     btn.setAttribute('type','button');
@@ -585,7 +584,6 @@
       if(!value) return;
       state.direction=value;
       state.startDate=todayAsYYYYMMDD();
-      save();
       render();
     });
   });
@@ -629,7 +627,6 @@
   if(shareBtn){
     shareBtn.addEventListener('click',async()=>{
       const data=buildSaveObject(state.startDate);
-      save();
       const shareCode=encodePlanToShareText(data);
       let linkText=shareCode;
       if(typeof window!=='undefined'&&window.location){
@@ -728,7 +725,6 @@
     updateOverrideUI();
     load();
     loadSharedPlanFromURL();
-    save();
     render();
     maybeShowWakeReminder();
   })();
