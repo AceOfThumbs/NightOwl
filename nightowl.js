@@ -4,6 +4,12 @@
   const STORAGE_KEY = 'nightowl.plan.v1';
   const TRANSFER_KEY = 'nightowl.plan.transfer';
   const OVERRIDE_KEY = 'nightowl.override.now';
+  const PREFS_KEY = 'nightowl.prefs.v1';
+  const SCHEDULES_KEY = 'nightowl.day.v1';
+  const DEFAULT_SCHEDULE_ID = 'default';
+  const MIN_TEXT_SCALE = 0.85;
+  const MAX_TEXT_SCALE = 1.35;
+  const TEXT_SCALE_STEP = 0.1;
   const noop=()=>{};
 
   let overrideNowDate=null;
@@ -26,6 +32,13 @@
 
   // ---------- helpers ----------
   const clamp=(n,min,max)=>Math.min(max,Math.max(min,n));
+  const escapeHtml=(str)=>String(str??'').replace(/[&<>"']/g,c=>({
+    '&':'&amp;',
+    '<':'&lt;',
+    '>':'&gt;',
+    '"':'&quot;',
+    "'":'&#39;'
+  })[c]);
   const todayAsYYYYMMDD=()=>{const d=getNow();return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;};
   const toMinutes=(t)=>{const [h,m]=String(t).split(':').map(Number);return (((h||0)*60+(m||0))%MINUTES_IN_DAY+MINUTES_IN_DAY)%MINUTES_IN_DAY};
   const minutesToTimeString=(mins)=>{const m=((mins%MINUTES_IN_DAY)+MINUTES_IN_DAY)%MINUTES_IN_DAY;return `${pad(Math.floor(m/60))}:${pad(m%60)}`};
@@ -88,6 +101,14 @@
     dailyStep:30,
     direction:'auto',
     startDate:todayAsYYYYMMDD(),
+    textScale:1,
+    theme:'dark',
+    day:{
+      scheduleId:DEFAULT_SCHEDULE_ID,
+      dirty:false,
+      items:[],
+    },
+    savedSchedules:{},
   };
 
   // ---------- DOM ----------
@@ -109,7 +130,16 @@
   const dailyStepLabel=$('dailyStepLabel');
   const planBody=$('planBody');
   const dirButtons=Array.from(document.querySelectorAll('[data-dir]'));
-  const yourDay=$('yourDay');
+  const yourDayList=$('yourDayList');
+  const addDayItem=$('addDayItem');
+  const yourDayName=$('yourDayName');
+  const yourDaySelect=$('yourDaySelect');
+  const yourDayLoad=$('yourDayLoad');
+  const yourDaySave=$('yourDaySave');
+  const yourDayReset=$('yourDayReset');
+  const textScaleDown=$('textScaleDown');
+  const textScaleUp=$('textScaleUp');
+  const themeButtons=Array.from(document.querySelectorAll('[data-theme-choice]'));
   const analogClock=$('analogClock');
   const clockDate=$('clockDate');
   const saveBtn=$('saveBtn');
@@ -138,6 +168,31 @@
     if(overrideInput&&document.activeElement!==overrideInput){
       overrideInput.value=overrideNowDate?formatDatetimeLocal(overrideNowDate):'';
     }
+  }
+
+  function applyTextScale(){
+    if(typeof document==='undefined'||!document.documentElement) return;
+    document.documentElement.style.setProperty('--font-scale',String(state.textScale||1));
+    updateDisplayControls();
+  }
+  function applyTheme(theme){
+    if(typeof document==='undefined'||!document.documentElement) return;
+    const next=theme==='light'?'light':'dark';
+    document.documentElement.setAttribute('data-theme',next);
+    state.theme=next;
+    updateThemeButtons();
+  }
+  function updateDisplayControls(){
+    if(textScaleDown) textScaleDown.disabled=(state.textScale||1)<=MIN_TEXT_SCALE+0.001;
+    if(textScaleUp) textScaleUp.disabled=(state.textScale||1)>=MAX_TEXT_SCALE-0.001;
+  }
+  function updateThemeButtons(){
+    themeButtons.forEach(btn=>{
+      const value=btn.getAttribute('data-theme-choice');
+      const active=value===state.theme;
+      btn.setAttribute('aria-pressed',active?'true':'false');
+      if(active) btn.classList.add('btn--active'); else btn.classList.remove('btn--active');
+    });
   }
 
   function showToast(message,variant='info',duration=3400){
@@ -190,6 +245,154 @@
     }catch(err){
       return false;
     }
+  }
+
+  function savePreferences(){
+    try{
+      const payload={version:1,textScale:state.textScale,theme:state.theme};
+      localStorage.setItem(PREFS_KEY,JSON.stringify(payload));
+    }catch(err){/* ignore */}
+  }
+  function loadPreferences(){
+    try{
+      const raw=localStorage.getItem(PREFS_KEY); if(!raw) return;
+      const data=JSON.parse(raw);
+      if(data?.version!==1) return;
+      if(typeof data.textScale==='number') state.textScale=clamp(data.textScale,MIN_TEXT_SCALE,MAX_TEXT_SCALE);
+      if(data.theme==='dark'||data.theme==='light') state.theme=data.theme;
+    }catch(err){console.warn('prefs load failed',err);}
+  }
+  function persistSchedules(){
+    try{
+      const payload={
+        version:1,
+        schedules:Object.values(state.savedSchedules).map(item=>({
+          id:item.id,
+          name:item.name,
+          items:cloneDayItems(item.items),
+        })),
+      };
+      localStorage.setItem(SCHEDULES_KEY,JSON.stringify(payload));
+    }catch(err){console.warn('schedule save failed',err);}
+  }
+  function loadSchedules(){
+    try{
+      const raw=localStorage.getItem(SCHEDULES_KEY); if(!raw) return;
+      const data=JSON.parse(raw);
+      if(data?.version!==1||!Array.isArray(data.schedules)) return;
+      const next={};
+      data.schedules.forEach(item=>{
+        if(!item) return;
+        const id=item.id||slugifyScheduleName(item.name);
+        if(!id) return;
+        next[id]={
+          id,
+          name:item.name||'Schedule',
+          items:cloneDayItems(item.items),
+        };
+      });
+      state.savedSchedules=next;
+    }catch(err){console.warn('schedule load failed',err);}
+  }
+  function slugifyScheduleName(name){
+    if(!name) return '';
+    const base=String(name).toLowerCase().trim().replace(/[^a-z0-9]+/g,'-').replace(/(^-|-$)/g,'');
+    if(base) return base;
+    return `schedule-${Date.now()}`;
+  }
+  function cloneDayItems(items){
+    if(!Array.isArray(items)) return [];
+    return items.map(item=>({
+      time:normalizeTimeString(item?.time||'00:00','00:00'),
+      label:String(item?.label??'').trim(),
+    }));
+  }
+  function getDefaultDayItems(wakeM,sleepDuration){
+    const events=computeDayEvents(wakeM,sleepDuration);
+    return [
+      {time:minutesToTimeString(events.wake),label:'Wake'},
+      {time:minutesToTimeString(events.lunch),label:'Lunch'},
+      {time:minutesToTimeString(events.dinner),label:'Dinner'},
+      {time:minutesToTimeString(events.sleep),label:'Sleep'},
+    ];
+  }
+  function ensureDefaultDaySnapshot(){
+    if(state.day.scheduleId===DEFAULT_SCHEDULE_ID&&!state.day.dirty){
+      const wakeM=toMinutes(state.wake);
+      const sleepDuration=MINUTES_IN_DAY-state.wakeDuration;
+      state.day.items=cloneDayItems(getDefaultDayItems(wakeM,sleepDuration));
+    }
+  }
+  function updateScheduleSelect(){
+    if(!yourDaySelect) return;
+    const currentValue=state.day.scheduleId;
+    const options=[{value:DEFAULT_SCHEDULE_ID,label:'Default'}];
+    const entries=Object.values(state.savedSchedules||{}).sort((a,b)=>a.name.localeCompare(b.name));
+    entries.forEach(item=>options.push({value:item.id,label:item.name||'Schedule'}));
+    yourDaySelect.innerHTML='';
+    options.forEach(opt=>{
+      const option=document.createElement('option');
+      option.value=opt.value;
+      option.textContent=opt.label;
+      yourDaySelect.appendChild(option);
+    });
+    if(options.some(opt=>opt.value===currentValue)){
+      yourDaySelect.value=currentValue;
+    }else{
+      yourDaySelect.value=DEFAULT_SCHEDULE_ID;
+    }
+  }
+  function renderYourDaySection(wakeM,sleepDuration){
+    if(!yourDayList) return;
+    if(state.day.scheduleId===DEFAULT_SCHEDULE_ID&&!state.day.dirty){
+      state.day.items=cloneDayItems(getDefaultDayItems(wakeM,sleepDuration));
+    }
+    yourDayList.innerHTML='';
+    if(!Array.isArray(state.day.items)||state.day.items.length===0){
+      const empty=document.createElement('div');
+      empty.className='yourday-empty';
+      empty.textContent='No items yet. Add your first entry.';
+      yourDayList.appendChild(empty);
+    }else{
+      state.day.items.forEach((item,index)=>{
+        const row=document.createElement('div');
+        row.className='yourday-row';
+        row.dataset.index=String(index);
+        const labelText=(item.label||'').trim();
+        const fallback=`item ${index+1}`;
+        const ariaLabel=escapeHtml(labelText||fallback);
+        const timeValue=escapeHtml(item.time||'00:00');
+        row.innerHTML=
+          `<input type="time" value="${timeValue}" data-field="time" aria-label="Time for ${ariaLabel}">`+
+          `<input type="text" value="${escapeHtml(labelText)}" placeholder="Label" data-field="label" aria-label="Label for ${ariaLabel}">`+
+          `<button type="button" class="yourday-remove" data-remove aria-label="Remove ${ariaLabel}">×</button>`;
+        yourDayList.appendChild(row);
+      });
+    }
+    updateScheduleSelect();
+    if(yourDayName&&document.activeElement!==yourDayName){
+      if(state.day.scheduleId===DEFAULT_SCHEDULE_ID){
+        yourDayName.value='';
+      }else{
+        yourDayName.value=state.savedSchedules?.[state.day.scheduleId]?.name||'';
+      }
+    }
+  }
+  function loadScheduleById(id){
+    if(id===DEFAULT_SCHEDULE_ID){
+      state.day.scheduleId=DEFAULT_SCHEDULE_ID;
+      state.day.dirty=false;
+      const wakeM=toMinutes(state.wake);
+      const sleepDuration=MINUTES_IN_DAY-state.wakeDuration;
+      state.day.items=cloneDayItems(getDefaultDayItems(wakeM,sleepDuration));
+      return true;
+    }
+    const schedule=state.savedSchedules?.[id];
+    if(!schedule) return false;
+    state.day.scheduleId=id;
+    state.day.dirty=true;
+    state.day.items=cloneDayItems(schedule.items);
+    return true;
   }
 
   let lastFocusedBeforeShare=null;
@@ -474,6 +677,8 @@
 
   // ---------- render ----------
   function render(){
+    applyTextScale();
+    applyTheme(state.theme);
     // inputs
     wakeInput.value=state.wake;
     wakeDuration.value=String(state.wakeDuration);
@@ -495,15 +700,7 @@
     sleepHours.textContent=String(hours);
     sleepHours2.textContent=String(hours);
 
-    // Your Day panel
-    if(yourDay){
-      const events=computeDayEvents(wakeM,sleepDuration);
-      yourDay.innerHTML=
-        `<div class="dayrow"><span class="label">Wake</span><span class="strong">${format12h(events.wake)}</span></div>`+
-        `<div class="dayrow"><span class="label">Lunch</span><span class="strong">${format12h(events.lunch)}</span></div>`+
-        `<div class="dayrow"><span class="label">Dinner</span><span class="strong">${format12h(events.dinner)}</span></div>`+
-        `<div class="dayrow"><span class="label">Sleep</span><span class="strong">${format12h(events.sleep)}</span></div>`;
-    }
+    renderYourDaySection(wakeM,sleepDuration);
 
 
     // feels-like clock
@@ -532,6 +729,17 @@
     }
 
     updateDirectionButtons();
+  }
+
+  function adjustTextScale(delta){
+    const next=Math.round((state.textScale+delta)*100)/100;
+    state.textScale=clamp(next,MIN_TEXT_SCALE,MAX_TEXT_SCALE);
+    applyTextScale();
+    savePreferences();
+  }
+  function setThemePreference(theme){
+    applyTheme(theme);
+    savePreferences();
   }
 
   function drawClock(svgEl,minutes){
@@ -568,6 +776,116 @@
   function lerp(a,b,t){const A=hexToRgb(a),B=hexToRgb(b);const u=Math.max(0,Math.min(1,t));return rgbToHex(A.r+(B.r-A.r)*u,A.g+(B.g-A.g)*u,A.b+(B.b-A.b)*u)}
 
   // ---------- events ----------
+  if(textScaleDown) textScaleDown.addEventListener('click',()=>adjustTextScale(-TEXT_SCALE_STEP));
+  if(textScaleUp) textScaleUp.addEventListener('click',()=>adjustTextScale(TEXT_SCALE_STEP));
+  themeButtons.forEach(btn=>{
+    btn.setAttribute('type','button');
+    btn.addEventListener('click',()=>{
+      const value=btn.getAttribute('data-theme-choice');
+      if(!value) return;
+      setThemePreference(value);
+      render();
+    });
+  });
+  if(yourDayList){
+    yourDayList.addEventListener('input',e=>{
+      ensureDefaultDaySnapshot();
+      const target=e.target;
+      if(!(target instanceof Element)||target.tagName!=='INPUT') return;
+      const row=target.closest('[data-index]');
+      if(!row) return;
+      const index=Number(row.dataset.index);
+      if(Number.isNaN(index)||!state.day.items[index]) return;
+      const field=target.getAttribute('data-field');
+      if(field==='time'){
+        const nextValue=normalizeTimeString(target.value,state.day.items[index].time||'00:00');
+        state.day.items[index].time=nextValue;
+        target.value=nextValue;
+      } else if(field==='label'){
+        state.day.items[index].label=target.value;
+      }
+      state.day.dirty=true;
+    });
+    yourDayList.addEventListener('click',e=>{
+      const btn=e.target instanceof Element?e.target.closest('[data-remove]'):null;
+      if(!btn) return;
+      ensureDefaultDaySnapshot();
+      const row=btn.closest('[data-index]');
+      if(!row) return;
+      const index=Number(row.dataset.index);
+      if(Number.isNaN(index)) return;
+      state.day.items.splice(index,1);
+      state.day.dirty=true;
+      render();
+    });
+  }
+  if(addDayItem){
+    addDayItem.addEventListener('click',()=>{
+      ensureDefaultDaySnapshot();
+      const fallback=state.day.items.length?state.day.items[state.day.items.length-1].time:'08:00';
+      state.day.items.push({time:normalizeTimeString(fallback,'08:00'),label:''});
+      state.day.dirty=true;
+      render();
+    });
+  }
+  if(yourDaySave){
+    yourDaySave.addEventListener('click',()=>{
+      ensureDefaultDaySnapshot();
+      const name=(yourDayName?.value||'').trim();
+      if(!name){
+        showToast('Enter a schedule name before saving.','error');
+        return;
+      }
+      const id=slugifyScheduleName(name);
+      if(!id){
+        showToast('Unable to save schedule.','error');
+        return;
+      }
+      const previousId=state.day.scheduleId;
+      const existed=Boolean(state.savedSchedules[id]);
+      state.savedSchedules[id]={id,name,items:cloneDayItems(state.day.items)};
+      if(previousId&&previousId!==id&&previousId!==DEFAULT_SCHEDULE_ID){
+        delete state.savedSchedules[previousId];
+      }
+      state.day.scheduleId=id;
+      state.day.dirty=false;
+      persistSchedules();
+      render();
+      showToast(existed?'Schedule updated.':'Schedule saved.','success');
+    });
+  }
+  if(yourDayLoad){
+    yourDayLoad.addEventListener('click',()=>{
+      const selected=yourDaySelect?.value||DEFAULT_SCHEDULE_ID;
+      const ok=loadScheduleById(selected);
+      if(!ok){
+        showToast('Schedule not found.','error');
+        return;
+      }
+      render();
+      showToast(selected===DEFAULT_SCHEDULE_ID?'Default schedule loaded.':'Schedule loaded.','success');
+    });
+  }
+  if(yourDayReset){
+    yourDayReset.addEventListener('click',()=>{
+      state.day.scheduleId=DEFAULT_SCHEDULE_ID;
+      state.day.dirty=false;
+      render();
+      showToast('Reverted to default schedule.','info');
+    });
+  }
+  if(yourDaySelect){
+    yourDaySelect.addEventListener('change',()=>{
+      if(yourDayName&&document.activeElement!==yourDayName){
+        const selected=yourDaySelect.value;
+        if(selected===DEFAULT_SCHEDULE_ID){
+          yourDayName.value='';
+        }else{
+          yourDayName.value=state.savedSchedules?.[selected]?.name||'';
+        }
+      }
+    });
+  }
   if(wakeInput) wakeInput.addEventListener('input',e=>{state.wake=e.target.value;state.startDate=todayAsYYYYMMDD();render()});
   if(wakeDuration) wakeDuration.addEventListener('input',e=>{state.wakeDuration=clamp(Number(e.target.value),720,1200);state.startDate=todayAsYYYYMMDD();render()});
   if(toggleFormat) toggleFormat.addEventListener('click',()=>{state.show12h=!state.show12h;render()});
@@ -711,6 +1029,11 @@
   // init
   (function init(){
     // defaults
+    loadPreferences();
+    loadSchedules();
+    applyTextScale();
+    applyTheme(state.theme);
+    updateScheduleSelect();
     wakeInput.value=state.wake; wakeDuration.value=String(state.wakeDuration);
     targetDate.value=state.targetDate; plannerMode.value=state.plannerMode; timeZone.value=state.timeZone; targetTime.value=state.targetTime; dailyStep.value=String(state.dailyStep);
     try{
