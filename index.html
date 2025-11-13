@@ -1,6 +1,6 @@
 <!-- index.html -->
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="dark">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -13,6 +13,31 @@
         <div>
           <h1>NightOwl</h1>
           <p class="muted">Shift-aware clock and circadian planner</p>
+        </div>
+        <div class="header-controls" role="group" aria-label="Display controls">
+          <div class="control-group" role="group" aria-label="Text size">
+            <span class="control-icon" aria-hidden="true">Aa</span>
+            <button id="textScaleDown" class="btn btn-icon" type="button" aria-label="Decrease text size">−</button>
+            <button id="textScaleUp" class="btn btn-icon" type="button" aria-label="Increase text size">+</button>
+          </div>
+          <div class="control-group" role="group" aria-label="Color mode">
+            <button
+              id="themeLight"
+              class="btn btn-icon"
+              type="button"
+              data-theme-choice="light"
+              aria-pressed="false"
+              aria-label="Switch to light mode"
+            >☀️</button>
+            <button
+              id="themeDark"
+              class="btn btn-icon"
+              type="button"
+              data-theme-choice="dark"
+              aria-pressed="false"
+              aria-label="Switch to dark mode"
+            >🌙</button>
+          </div>
         </div>
         <div id="kofi-slot">
           <a
@@ -72,7 +97,26 @@
 
           <div class="card">
             <div class="card-head"><h2>Your Day</h2></div>
-            <div id="yourDay"></div>
+            <div class="yourday-panel">
+              <p class="sub">Adjust your day, then save or load a schedule.</p>
+              <div class="field">
+                <label class="label" for="yourDaySelect">Saved schedules</label>
+                <div class="row wrap">
+                  <select id="yourDaySelect"></select>
+                  <button id="yourDayLoad" class="btn" type="button">Load</button>
+                  <button id="yourDayReset" class="btn" type="button">Reset</button>
+                </div>
+              </div>
+              <div id="yourDayList" class="yourday-list" aria-live="polite"></div>
+              <button id="addDayItem" class="btn" type="button">Add item</button>
+              <div class="field">
+                <label class="label" for="yourDayName">Save current as</label>
+                <div class="row wrap">
+                  <input id="yourDayName" type="text" placeholder="e.g. Night shift" />
+                  <button id="yourDaySave" class="btn primary" type="button">Save</button>
+                </div>
+              </div>
+            </div>
           </div>
         </section>
 
