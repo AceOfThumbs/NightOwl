@@ -80,6 +80,9 @@ input[type="time"],input[type="date"],input[type="datetime-local"]{width:100%;ma
 input[type="time"]::-webkit-calendar-picker-indicator,
 input[type="date"]::-webkit-calendar-picker-indicator,
 input[type="datetime-local"]::-webkit-calendar-picker-indicator{filter:invert(1) brightness(1.2)}
+:root[data-theme="light"] input[type="time"]::-webkit-calendar-picker-indicator,
+:root[data-theme="light"] input[type="date"]::-webkit-calendar-picker-indicator,
+:root[data-theme="light"] input[type="datetime-local"]::-webkit-calendar-picker-indicator{filter:none}
 textarea{width:100%;height:160px}
 .grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
 .planner-actions{display:flex;flex-direction:column;gap:8px;margin-top:12px}
@@ -136,9 +139,10 @@ textarea{width:100%;height:160px}
 .yourday-panel{display:flex;flex-direction:column;gap:12px}
 .yourday-list{display:flex;flex-direction:column;gap:8px}
 .yourday-row{display:grid;grid-template-columns:96px 1fr auto;gap:8px;align-items:center}
-.yourday-row input[type="text"]{width:100%}
-.yourday-remove{border-radius:50%;padding:4px 8px;background:transparent;border:1px solid var(--border);color:var(--muted);min-width:32px}
-.yourday-remove:hover{color:var(--ink);border-color:var(--accent)}
+.yourday-row input[type="text"]{width:25%;min-width:120px;justify-self:start}
+.yourday-remove{padding:0;background:transparent;border:none;color:var(--muted);font-size:1.2rem;line-height:1;min-width:0;cursor:pointer;justify-self:start}
+.yourday-remove:hover{color:var(--ink)}
+.yourday-remove:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .yourday-empty{font-size:var(--font-small);color:var(--muted);padding:8px 0}
 
 .btn-icon.btn-ghost{background:transparent;border-color:var(--border);color:var(--muted)}
@@ -158,6 +162,7 @@ input::placeholder,textarea::placeholder{color:var(--muted)}
   .header{flex-direction:column;align-items:flex-start}
   .header-controls{margin-left:0;align-self:stretch;justify-content:flex-start}
   .yourday-row{grid-template-columns:1fr}
+  .yourday-row input[type="text"]{width:100%;min-width:0;justify-self:stretch}
 }
 
 @media (max-width:500px){
