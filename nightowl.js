@@ -134,7 +134,7 @@
   const addDayItem=$('addDayItem');
   const yourDayName=$('yourDayName');
   const yourDaySelect=$('yourDaySelect');
-  const yourDayLoad=$('yourDayLoad');
+  const yourDayRemove=$('yourDayRemove');
   const yourDaySave=$('yourDaySave');
   const yourDayReset=$('yourDayReset');
   const textScaleDown=$('textScaleDown');
@@ -307,6 +307,10 @@
       label:String(item?.label??'').trim(),
     }));
   }
+  function sortDayItemsInPlace(items){
+    if(!Array.isArray(items)) return;
+    items.sort((a,b)=>toMinutes(a?.time||'00:00')-toMinutes(b?.time||'00:00'));
+  }
   function getDefaultDayItems(wakeM,sleepDuration){
     const events=computeDayEvents(wakeM,sleepDuration);
     return [
@@ -354,6 +358,7 @@
       empty.textContent='No items yet. Add your first entry.';
       yourDayList.appendChild(empty);
     }else{
+      sortDayItemsInPlace(state.day.items);
       state.day.items.forEach((item,index)=>{
         const row=document.createElement('div');
         row.className='yourday-row';
@@ -370,6 +375,9 @@
       });
     }
     updateScheduleSelect();
+    if(yourDayRemove){
+      yourDayRemove.disabled=state.day.scheduleId===DEFAULT_SCHEDULE_ID;
+    }
     if(yourDayName&&document.activeElement!==yourDayName){
       if(state.day.scheduleId===DEFAULT_SCHEDULE_ID){
         yourDayName.value='';
@@ -824,6 +832,7 @@
       ensureDefaultDaySnapshot();
       const fallback=state.day.items.length?state.day.items[state.day.items.length-1].time:'08:00';
       state.day.items.push({time:normalizeTimeString(fallback,'08:00'),label:''});
+      sortDayItemsInPlace(state.day.items);
       state.day.dirty=true;
       render();
     });
@@ -841,6 +850,7 @@
         showToast('Unable to save schedule.','error');
         return;
       }
+      sortDayItemsInPlace(state.day.items);
       const previousId=state.day.scheduleId;
       const existed=Boolean(state.savedSchedules[id]);
       state.savedSchedules[id]={id,name,items:cloneDayItems(state.day.items)};
@@ -854,16 +864,18 @@
       showToast(existed?'Schedule updated.':'Schedule saved.','success');
     });
   }
-  if(yourDayLoad){
-    yourDayLoad.addEventListener('click',()=>{
-      const selected=yourDaySelect?.value||DEFAULT_SCHEDULE_ID;
-      const ok=loadScheduleById(selected);
-      if(!ok){
-        showToast('Schedule not found.','error');
-        return;
+  if(yourDayRemove){
+    yourDayRemove.addEventListener('click',()=>{
+      const currentId=state.day.scheduleId;
+      if(currentId===DEFAULT_SCHEDULE_ID) return;
+      if(state.savedSchedules[currentId]){
+        delete state.savedSchedules[currentId];
+        persistSchedules();
       }
+      state.day.scheduleId=DEFAULT_SCHEDULE_ID;
+      state.day.dirty=false;
       render();
-      showToast(selected===DEFAULT_SCHEDULE_ID?'Default schedule loaded.':'Schedule loaded.','success');
+      showToast('Schedule removed.','info');
     });
   }
   if(yourDayReset){
@@ -876,14 +888,15 @@
   }
   if(yourDaySelect){
     yourDaySelect.addEventListener('change',()=>{
-      if(yourDayName&&document.activeElement!==yourDayName){
-        const selected=yourDaySelect.value;
-        if(selected===DEFAULT_SCHEDULE_ID){
-          yourDayName.value='';
-        }else{
-          yourDayName.value=state.savedSchedules?.[selected]?.name||'';
-        }
+      const selected=yourDaySelect.value;
+      const ok=loadScheduleById(selected);
+      if(!ok){
+        showToast('Schedule not found.','error');
+        render();
+        return;
       }
+      render();
+      showToast(selected===DEFAULT_SCHEDULE_ID?'Default schedule loaded.':'Schedule loaded.','success');
     });
   }
   if(wakeInput) wakeInput.addEventListener('input',e=>{state.wake=e.target.value;state.startDate=todayAsYYYYMMDD();render()});
