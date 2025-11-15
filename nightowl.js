@@ -97,6 +97,7 @@
     addViaClock: false,
     activeFilter: 'all',
     pointerDrag: null,
+    openEditorId: null,
     timeZone: 'local',
     plannerMode: 'wake',
     plannerDirection: 'auto',
@@ -634,7 +635,18 @@
       dayList.appendChild(empty);
       return;
     }
-    state.events.forEach((evt) => {
+    const events = state.events.filter((evt) => state.activeFilter === 'all' || evt.type === state.activeFilter);
+    if (!events.length) {
+      const empty = document.createElement('li');
+      empty.className = 'text-muted';
+      empty.textContent = state.events.length
+        ? 'No events match the current filter.'
+        : 'No events yet. Add items to build your day.';
+      dayList.appendChild(empty);
+      return;
+    }
+
+    events.forEach((evt) => {
         const li = document.createElement('li');
         li.className = 'day-item';
         li.draggable = true;
@@ -667,9 +679,18 @@
         const timeButton = document.createElement('button');
         timeButton.className = 'day-item__time';
         timeButton.type = 'button';
-        timeButton.textContent = `${minutesToLabel(evt.startMin)} – ${minutesToLabel(evt.endMin)}`;
         timeButton.setAttribute('aria-label', `Edit time for ${evt.title}`);
-        timeButton.addEventListener('click', () => openTimeEditor(li, evt));
+        const timeRange = document.createElement('span');
+        timeRange.className = 'day-item__time-range';
+        timeRange.textContent = `${minutesToLabel(evt.startMin)} – ${minutesToLabel(evt.endMin)}`;
+        const timeHint = document.createElement('span');
+        timeHint.className = 'day-item__time-hint';
+        timeHint.textContent = 'Edit';
+        timeButton.appendChild(timeRange);
+        timeButton.appendChild(timeHint);
+        const isEditing = state.openEditorId === evt.id;
+        timeButton.setAttribute('aria-expanded', isEditing ? 'true' : 'false');
+        timeButton.addEventListener('click', () => toggleTimeEditor(evt.id));
 
         const dragHandle = document.createElement('span');
         dragHandle.className = 'drag-handle';
@@ -690,6 +711,10 @@
         li.appendChild(timeButton);
         li.appendChild(dragHandle);
         li.appendChild(actions);
+
+        if (isEditing) {
+          li.appendChild(buildTimeEditor(evt));
+        }
 
         li.addEventListener('click', (event) => {
           if (event.target === deleteBtn || event.target === titleInput || event.target === timeButton) return;
@@ -722,36 +747,73 @@
       });
   }
 
-  function openTimeEditor(li, evt) {
-    if (li.querySelector('.time-editor')) return;
+  function toggleTimeEditor(id) {
+    state.openEditorId = state.openEditorId === id ? null : id;
+    render();
+  }
+
+  function buildTimeEditor(evt) {
     const editor = document.createElement('div');
     editor.className = 'time-editor';
-    const startInput = document.createElement('input');
-    startInput.type = 'time';
-    startInput.value = minutesToTime(evt.startMin);
-    const endInput = document.createElement('input');
-    endInput.type = 'time';
-    endInput.value = minutesToTime(evt.endMin);
+    editor.setAttribute('role', 'group');
+
+    const startField = createTimeField('Start', minutesToTime(evt.startMin));
+    const endField = createTimeField('End', minutesToTime(evt.endMin));
+
     const saveBtn = document.createElement('button');
     saveBtn.className = 'btn btn-primary';
     saveBtn.type = 'button';
-    saveBtn.textContent = 'Done';
+    saveBtn.textContent = 'Save';
     saveBtn.addEventListener('click', () => {
-      const start = toMinutes(startInput.value);
-      const end = toMinutes(endInput.value);
+      const start = toMinutes(startField.input.value);
+      const end = toMinutes(endField.input.value);
       if (minutesDiff(start, end) < MIN_EVENT_DURATION) {
         showToast('Event must be at least 10 minutes long', 'error');
         return;
       }
       evt.startMin = start;
       evt.endMin = end;
+      state.openEditorId = null;
       persistState();
       render();
     });
-    editor.appendChild(startInput);
-    editor.appendChild(endInput);
-    editor.appendChild(saveBtn);
-    li.appendChild(editor);
+
+    const cancelBtn = document.createElement('button');
+    cancelBtn.className = 'btn btn-ghost';
+    cancelBtn.type = 'button';
+    cancelBtn.textContent = 'Cancel';
+    cancelBtn.addEventListener('click', () => {
+      state.openEditorId = null;
+      render();
+    });
+
+    const actions = document.createElement('div');
+    actions.className = 'time-editor__actions';
+    actions.appendChild(saveBtn);
+    actions.appendChild(cancelBtn);
+
+    editor.appendChild(startField.field);
+    editor.appendChild(endField.field);
+    editor.appendChild(actions);
+
+    requestAnimationFrame(() => startField.input.focus());
+
+    return editor;
+  }
+
+  function createTimeField(labelText, value) {
+    const field = document.createElement('label');
+    field.className = 'time-editor__field';
+    const label = document.createElement('span');
+    label.className = 'time-editor__label';
+    label.textContent = labelText;
+    const input = document.createElement('input');
+    input.type = 'time';
+    input.value = value;
+    input.step = SNAP_DEFAULT * 60;
+    field.appendChild(label);
+    field.appendChild(input);
+    return { field, input };
   }
 
   function addEventFromTemplate(template, startMinutes) {
@@ -767,6 +829,7 @@
   function removeEvent(id) {
     state.events = state.events.filter((evt) => evt.id !== id);
     if (state.selectedId === id) state.selectedId = null;
+    if (state.openEditorId === id) state.openEditorId = null;
     persistState();
     render();
   }
