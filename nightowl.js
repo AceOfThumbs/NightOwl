@@ -15,10 +15,8 @@
   const $ = (id) => document.getElementById(id);
   const dayRing = $('dayRing');
   const nextEventLabel = $('nextEventLabel');
-  const ringTooltip = $('ringTooltip');
   const dayList = $('dayList');
   const addDayItemBtn = $('addDayItem');
-  const addViaClockBtn = $('addViaClock');
   const filterChips = Array.from(document.querySelectorAll('.chip'));
   const timezoneToggle = $('timezoneToggle');
   const timeZoneSelect = $('timeZone');
@@ -30,7 +28,6 @@
   const dailyStepLabel = $('dailyStepLabel');
   const nudgeCardsEl = $('nudgeCards');
   const adjustmentCurveSelect = $('adjustmentCurve');
-  const applyPlanBtn = $('applyPlan');
   const segmentBtns = Array.from(document.querySelectorAll('.segment-btn'));
   const textScaleDown = $('textScaleDown');
   const textScaleUp = $('textScaleUp');
@@ -94,7 +91,6 @@
   const state = {
     events: [],
     selectedId: null,
-    addViaClock: false,
     activeFilter: 'all',
     pointerDrag: null,
     openEditorId: null,
@@ -1063,21 +1059,6 @@
     return svg;
   }
 
-  function applyNudgePlan() {
-    if (!state.nudgePlan.length) {
-      showToast('Adjust the nudge inputs to generate a plan first.', 'info');
-      return;
-    }
-    if (Math.abs(state.nudgeDelta) < 0.5) {
-      showToast('You’re already aligned with the target.', 'info');
-      return;
-    }
-    state.events = state.events.map((evt) => shiftEvent(evt, state.nudgeDelta));
-    persistState();
-    render();
-    showToast('Nudge applied to your day', 'success');
-  }
-
   function setPlannerDirection(dir) {
     state.plannerDirection = dir;
     segmentBtns.forEach((btn) => btn.setAttribute('aria-checked', btn.dataset.dir === dir ? 'true' : 'false'));
@@ -1127,29 +1108,10 @@
     render();
   }
 
-  function enableClockPicker(enable) {
-    state.addViaClock = enable;
-    addViaClockBtn.classList.toggle('btn-primary', enable);
-    addViaClockBtn.classList.toggle('btn-secondary', !enable);
-    if (enable) {
-      ringTooltip.hidden = false;
-      ringTooltip.textContent = 'Drag to set a time block';
-    } else {
-      ringTooltip.hidden = true;
-    }
-  }
-
   function handleRingPointerDown(evt) {
     if (evt.target.closest('.arc-path') || evt.target.closest('.arc-handle')) return;
-    const minutes = snapMinutes(getMinutesFromPointer(evt), getSnapStep(evt));
-    if (!state.addViaClock) {
-      state.selectedId = null;
-      render();
-      return;
-    }
-    const template = quickAddTemplates[0];
-    addEventFromTemplate(template, minutes);
-    enableClockPicker(false);
+    state.selectedId = null;
+    render();
   }
 
   function initQuickAddMenu() {
@@ -1245,7 +1207,6 @@
     if (targetDateInput) targetDateInput.addEventListener('change', (evt) => updateTargetDate(evt.target.value));
     if (dailyStepRange) dailyStepRange.addEventListener('input', (evt) => updateDailyStep(evt.target.value));
     if (adjustmentCurveSelect) adjustmentCurveSelect.addEventListener('change', (evt) => updateAdjustmentCurve(evt.target.value));
-    applyPlanBtn.addEventListener('click', applyNudgePlan);
     plannerModeSelect.value = state.plannerMode;
     targetTimeInput.value = state.targetTime;
     targetDateInput.value = state.targetDate;
@@ -1269,10 +1230,6 @@
     });
   }
 
-  function initClockPicker() {
-    addViaClockBtn.addEventListener('click', () => enableClockPicker(!state.addViaClock));
-  }
-
   function initOverrideControls() {
     applyOverrideBtn.addEventListener('click', applyOverride);
     clearOverrideBtn.addEventListener('click', clearOverride);
@@ -1289,7 +1246,6 @@
     initFilterChips();
     initSegmentControl();
     initRingInteraction();
-    initClockPicker();
     initQuickAddMenu();
     initAdvancedAccordion();
     initOverrideControls();

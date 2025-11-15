@@ -41,7 +41,6 @@
               <svg id="dayRing" viewBox="0 0 400 400" aria-hidden="true"></svg>
               <div class="ring-overlay">
                 <div class="next-event" id="nextEventLabel" hidden></div>
-                <div class="ring-tooltip" id="ringTooltip" hidden></div>
               </div>
             </div>
             <div class="micro-legend" aria-label="Legend">
@@ -68,7 +67,6 @@
             <p class="text-muted">Plan anchors for your day. Add items or drag them on the clock.</p>
           </header>
           <div class="list-controls">
-            <button id="addViaClock" class="btn btn-secondary" type="button">Pick on clock</button>
             <button id="addDayItem" class="btn btn-primary" type="button">Add item</button>
           </div>
           <ul id="dayList" class="day-list" aria-live="polite"></ul>
@@ -117,9 +115,6 @@
             </label>
           </div>
           <div class="nudge-cards" id="nudgeCards" aria-live="polite"></div>
-          <div class="nudge-actions">
-            <button id="applyPlan" class="btn btn-primary" type="button">Apply to plan</button>
-          </div>
         </section>
       </main>
 
