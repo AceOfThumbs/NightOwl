@@ -248,6 +248,7 @@ textarea {
   display: grid;
   place-items: center;
   padding: var(--space-3);
+  touch-action: none;
 }
 
 .day-ring svg {
@@ -369,7 +370,8 @@ textarea {
   display: grid;
   grid-template-columns: auto 1fr auto auto auto;
   gap: var(--space-3);
-  align-items: center;
+  row-gap: var(--space-2);
+  align-items: start;
   padding: var(--space-3);
   background: var(--card-alt);
   border-radius: var(--radius-md);
@@ -394,6 +396,7 @@ textarea {
   display: flex;
   flex-direction: column;
   gap: var(--space-1);
+  min-width: 0;
 }
 
 .day-item__title input {
@@ -413,9 +416,12 @@ textarea {
   border-radius: var(--radius-sm);
   padding: var(--space-2) var(--space-3);
   display: inline-flex;
-  align-items: center;
+  flex-direction: column;
+  align-items: flex-start;
   gap: var(--space-1);
   cursor: pointer;
+  min-width: 150px;
+  align-self: start;
   transition: background 150ms ease, border-color 150ms ease, color 150ms ease;
 }
 
@@ -427,6 +433,22 @@ textarea {
   outline: none;
 }
 
+.day-item__time[aria-expanded="true"] {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgba(122, 162, 255, 0.25);
+}
+
+.day-item__time-range {
+  font-size: 0.95rem;
+}
+
+.day-item__time-hint {
+  font-size: 0.7rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+
 .day-item__time:focus-visible {
   box-shadow: 0 0 0 2px rgba(122, 162, 255, 0.35);
 }
@@ -435,6 +457,7 @@ textarea {
   cursor: grab;
   color: var(--text-3);
   font-size: 1.25rem;
+  align-self: start;
 }
 
 .drag-handle:active {
@@ -444,6 +467,7 @@ textarea {
 .day-item__actions {
   display: inline-flex;
   gap: var(--space-2);
+  align-self: start;
 }
 
 .day-item button {
@@ -451,16 +475,45 @@ textarea {
 }
 
 .time-editor {
-  display: flex;
-  gap: var(--space-2);
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: var(--space-3);
+  margin-top: var(--space-2);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--muted);
 }
 
-.time-editor input {
+.time-editor__field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.time-editor__label {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-3);
+}
+
+.time-editor__field input {
   background: var(--card);
   border: 1px solid var(--muted);
   border-radius: var(--radius-sm);
   padding: var(--space-2);
-  width: 110px;
+  width: 100%;
+}
+
+.time-editor__actions {
+  display: inline-flex;
+  gap: var(--space-2);
+  align-items: flex-end;
+  justify-content: flex-end;
+}
+
+.time-editor__actions .btn {
+  min-width: 96px;
 }
 
 .segment {
@@ -721,6 +774,7 @@ select {
   stroke-width: 2;
   cursor: grab;
   pointer-events: all;
+  touch-action: none;
 }
 
 .arc-handle:focus-visible {
@@ -735,6 +789,7 @@ select {
   stroke-width: 16;
   cursor: pointer;
   filter: drop-shadow(0 2px 8px rgba(0, 0, 0, 0.45));
+  touch-action: none;
 }
 
 .arc-path[data-type="sleep"] {
@@ -866,6 +921,18 @@ select {
   .list-controls,
   .nudge-actions {
     flex-direction: column;
+  }
+  .day-item {
+    grid-template-columns: auto 1fr;
+  }
+  .day-item__time {
+    grid-column: 1 / -1;
+    width: 100%;
+  }
+  .drag-handle,
+  .day-item__actions {
+    grid-column: 2 / 3;
+    justify-self: end;
   }
 }
 
