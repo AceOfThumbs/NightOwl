@@ -1,1067 +1,1175 @@
 /* nightowl.js */
-(function(){
-  const MINUTES_IN_DAY = 1440;
-  const STORAGE_KEY = 'nightowl.plan.v1';
-  const TRANSFER_KEY = 'nightowl.plan.transfer';
-  const OVERRIDE_KEY = 'nightowl.override.now';
-  const PREFS_KEY = 'nightowl.prefs.v1';
-  const SCHEDULES_KEY = 'nightowl.day.v1';
-  const DEFAULT_SCHEDULE_ID = 'default';
-  const MIN_TEXT_SCALE = 0.85;
+(() => {
+  const MINUTES_IN_DAY = 24 * 60;
+  const STORAGE_KEY = 'nightowl.events.v2';
+  const PREFS_KEY = 'nightowl.prefs.v2';
+  const OVERRIDE_KEY = 'nightowl.override.v1';
+  const SNAP_DEFAULT = 5;
+  const SNAP_ALT = 1;
+  const SNAP_SHIFT = 15;
+  const MIN_EVENT_DURATION = 10;
   const MAX_TEXT_SCALE = 1.35;
+  const MIN_TEXT_SCALE = 0.85;
   const TEXT_SCALE_STEP = 0.1;
-  const noop=()=>{};
 
-  let overrideNowDate=null;
-  const pad=(n)=>String(n).padStart(2,'0');
-  const getNow=()=>overrideNowDate?new Date(overrideNowDate.getTime()):new Date();
-  const formatDatetimeLocal=(date)=>{
-    const d=new Date(date.getTime());
-    return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  const $ = (id) => document.getElementById(id);
+  const dayRing = $('dayRing');
+  const nextEventLabel = $('nextEventLabel');
+  const ringTooltip = $('ringTooltip');
+  const dayList = $('dayList');
+  const addDayItemBtn = $('addDayItem');
+  const addViaClockBtn = $('addViaClock');
+  const filterChips = Array.from(document.querySelectorAll('.chip'));
+  const timezoneToggle = $('timezoneToggle');
+  const timeZoneSelect = $('timeZone');
+  const targetDateInput = $('targetDate');
+  const plannerModeSelect = $('plannerMode');
+  const plannerModeLabel = $('plannerModeLabel');
+  const targetTimeInput = $('targetTime');
+  const dailyStepRange = $('dailyStep');
+  const dailyStepLabel = $('dailyStepLabel');
+  const nudgeCardsEl = $('nudgeCards');
+  const toggleGhostBtn = $('toggleGhost');
+  const applyPlanBtn = $('applyPlan');
+  const segmentBtns = Array.from(document.querySelectorAll('.segment-btn'));
+  const textScaleDown = $('textScaleDown');
+  const textScaleUp = $('textScaleUp');
+  const themeButtons = Array.from(document.querySelectorAll('[data-theme-choice]'));
+  const nowLabel = $('nowLabel');
+  const feelsLikeLabel = $('feelsLikeLabel');
+  const advancedToggle = $('advancedToggle');
+  const advancedBody = $('advancedBody');
+  const overrideInput = $('overrideInput');
+  const applyOverrideBtn = $('applyOverride');
+  const clearOverrideBtn = $('clearOverride');
+  const overrideStatus = $('overrideStatus');
+  const toastContainer = $('toastContainer');
+
+  const timezoneLocations = {
+    local: { label: 'Local', lat: 40.7128, lon: -74.006 },
+    UTC: { label: 'UTC', lat: 0, lon: 0 },
+    'America/Los_Angeles': { label: 'America/Los_Angeles', lat: 34.0522, lon: -118.2437 },
+    'America/Denver': { label: 'America/Denver', lat: 39.7392, lon: -104.9903 },
+    'America/Chicago': { label: 'America/Chicago', lat: 41.8781, lon: -87.6298 },
+    'America/New_York': { label: 'America/New_York', lat: 40.7128, lon: -74.006 },
+    'Europe/London': { label: 'Europe/London', lat: 51.5072, lon: -0.1276 },
+    'Europe/Paris': { label: 'Europe/Paris', lat: 48.8566, lon: 2.3522 },
+    'Europe/Berlin': { label: 'Europe/Berlin', lat: 52.52, lon: 13.405 },
+    'Asia/Tokyo': { label: 'Asia/Tokyo', lat: 35.6762, lon: 139.6503 },
+    'Asia/Singapore': { label: 'Asia/Singapore', lat: 1.3521, lon: 103.8198 },
+    'Australia/Sydney': { label: 'Australia/Sydney', lat: -33.8688, lon: 151.2093 }
   };
-  function parseDatetimeLocal(value){
-    if(!value) return null;
-    const [datePart,timePart=''] = value.split('T');
-    const [y,m,d]=datePart.split('-').map(Number);
-    const [hh='0',mm='0']=timePart.split(':');
-    const h=Number(hh),min=Number(mm);
-    if([y,m,d,h,min].some(n=>Number.isNaN(n))) return null;
-    if(m<1||m>12||d<1||d>31||h<0||h>23||min<0||min>59) return null;
-    return new Date(y,m-1,d,h,min);
+
+  const eventTypes = {
+    sleep: { icon: '🌙', label: 'Sleep', colorKey: 'sleep', defaultDuration: 8 * 60 },
+    wake: { icon: '☀️', label: 'Wake', colorKey: 'wake', defaultDuration: 30 },
+    meal: { icon: '🍽️', label: 'Meal', colorKey: 'meal', defaultDuration: 45 },
+    exercise: { icon: '🧘‍♀️', label: 'Exercise', colorKey: 'exercise', defaultDuration: 60 },
+    work: { icon: '💼', label: 'Work', colorKey: 'work', defaultDuration: 8 * 60 },
+    light: { icon: '💡', label: 'Bright light', colorKey: 'light', defaultDuration: 30 },
+    custom: { icon: '⭐', label: 'Custom', colorKey: 'wake', defaultDuration: 60 }
+  };
+
+  const quickAddTemplates = [
+    { type: 'sleep', title: 'Sleep', duration: 8 * 60 },
+    { type: 'meal', title: 'Breakfast', duration: 30 },
+    { type: 'meal', title: 'Lunch', duration: 60 },
+    { type: 'meal', title: 'Dinner', duration: 45 },
+    { type: 'exercise', title: 'Exercise', duration: 60 },
+    { type: 'light', title: 'Bright-light block', duration: 30 },
+    { type: 'custom', title: 'Note', duration: 30 },
+    { type: 'work', title: 'Work', duration: 8 * 60 }
+  ];
+
+  const defaultEvents = () => [
+    createEvent('sleep', 'Sleep', toMinutes('23:00'), toMinutes('07:00')),
+    createEvent('wake', 'Wake up', toMinutes('07:00'), toMinutes('07:30')),
+    createEvent('meal', 'Breakfast', toMinutes('07:30'), toMinutes('08:00')),
+    createEvent('work', 'Work', toMinutes('09:00'), toMinutes('17:00')),
+    createEvent('meal', 'Lunch', toMinutes('12:30'), toMinutes('13:15')),
+    createEvent('exercise', 'Exercise', toMinutes('18:00'), toMinutes('19:00')),
+    createEvent('meal', 'Dinner', toMinutes('19:30'), toMinutes('20:15'))
+  ];
+
+  const state = {
+    events: [],
+    selectedId: null,
+    addViaClock: false,
+    activeFilter: 'all',
+    pointerDrag: null,
+    timeZone: 'local',
+    plannerMode: 'wake',
+    plannerDirection: 'auto',
+    targetTime: '07:30',
+    targetDate: null,
+    dailyStep: 30,
+    ghostVisible: false,
+    ghostDelta: 0,
+    ghostPlan: [],
+    textScale: 1,
+    theme: document.documentElement.getAttribute('data-theme') || 'dark',
+    overrideNow: null
+  };
+
+  state.targetDate = todayISO();
+
+  const formatterCache = new Map();
+
+  function todayISO() {
+    const now = getNow();
+    return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
   }
 
-  // ---------- helpers ----------
-  const clamp=(n,min,max)=>Math.min(max,Math.max(min,n));
-  const escapeHtml=(str)=>String(str??'').replace(/[&<>"']/g,c=>({
-    '&':'&amp;',
-    '<':'&lt;',
-    '>':'&gt;',
-    '"':'&quot;',
-    "'":'&#39;'
-  })[c]);
-  const todayAsYYYYMMDD=()=>{const d=getNow();return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;};
-  const toMinutes=(t)=>{const [h,m]=String(t).split(':').map(Number);return (((h||0)*60+(m||0))%MINUTES_IN_DAY+MINUTES_IN_DAY)%MINUTES_IN_DAY};
-  const minutesToTimeString=(mins)=>{const m=((mins%MINUTES_IN_DAY)+MINUTES_IN_DAY)%MINUTES_IN_DAY;return `${pad(Math.floor(m/60))}:${pad(m%60)}`};
-  const format12h=(mins)=>{const m=((mins%MINUTES_IN_DAY)+MINUTES_IN_DAY)%MINUTES_IN_DAY;let h=Math.floor(m/60);const mm=pad(m%60);const ap=h>=12?'PM':'AM';h%=12;if(h===0)h=12;return `${h}:${mm} ${ap}`};
-  const formatCompactDate=(d)=>d.toLocaleDateString(undefined,{weekday:'short',month:'short',day:'numeric'});
-  const modDay=(n)=>((n%MINUTES_IN_DAY)+MINUTES_IN_DAY)%MINUTES_IN_DAY;
+  function getNow() {
+    return state.overrideNow ? new Date(state.overrideNow) : new Date();
+  }
 
-  const FORMATTER_BASE_OPTIONS=Object.freeze({hour12:false,hour:'2-digit',minute:'2-digit'});
-  const formatterCache=new Map();
-  function getFormatterForTZ(tz){
-    const key=tz||'local';
-    if(!formatterCache.has(key)){
-      const options=key==='local'?{...FORMATTER_BASE_OPTIONS}:{...FORMATTER_BASE_OPTIONS,timeZone:key};
-      formatterCache.set(key,new Intl.DateTimeFormat('en-GB',options));
+  function pad(n) {
+    return String(n).padStart(2, '0');
+  }
+
+  function toMinutes(time) {
+    const [h = 0, m = 0] = String(time).split(':').map((p) => Number(p));
+    return ((h * 60 + m) % MINUTES_IN_DAY + MINUTES_IN_DAY) % MINUTES_IN_DAY;
+  }
+
+  function minutesToTime(mins) {
+    const m = ((mins % MINUTES_IN_DAY) + MINUTES_IN_DAY) % MINUTES_IN_DAY;
+    return `${pad(Math.floor(m / 60))}:${pad(m % 60)}`;
+  }
+
+  function minutesToLabel(mins) {
+    const m = ((mins % MINUTES_IN_DAY) + MINUTES_IN_DAY) % MINUTES_IN_DAY;
+    const hours = Math.floor(m / 60);
+    const minutes = pad(m % 60);
+    return `${hours === 0 ? 12 : hours > 12 ? hours - 12 : hours}:${minutes} ${hours < 12 ? 'AM' : 'PM'}`;
+  }
+
+  function minutesDiff(start, end) {
+    let diff = ((end - start) % MINUTES_IN_DAY + MINUTES_IN_DAY) % MINUTES_IN_DAY;
+    if (diff === 0) diff = MINUTES_IN_DAY;
+    return diff;
+  }
+
+  function createEvent(type, title, startMin, endMin) {
+    const id = typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+      ? crypto.randomUUID()
+      : `evt-${Math.random().toString(36).slice(2, 10)}`;
+    return { id, type, title, startMin, endMin, repeat: 'daily' };
+  }
+
+  function loadState() {
+    try {
+      const stored = JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null');
+      if (stored && Array.isArray(stored.events)) {
+        state.events = stored.events.map((evt) => ({ ...evt }));
+      } else {
+        state.events = defaultEvents();
+      }
+    } catch (err) {
+      console.warn('Failed to load events', err);
+      state.events = defaultEvents();
+    }
+    try {
+      const prefs = JSON.parse(localStorage.getItem(PREFS_KEY) || 'null');
+      if (prefs) {
+        state.textScale = clamp(prefs.textScale ?? state.textScale, MIN_TEXT_SCALE, MAX_TEXT_SCALE);
+        state.theme = prefs.theme === 'light' ? 'light' : 'dark';
+        state.timeZone = prefs.timeZone || state.timeZone;
+        state.targetTime = prefs.targetTime || state.targetTime;
+        state.dailyStep = clamp(Number(prefs.dailyStep) || state.dailyStep, 5, 120);
+        state.plannerMode = prefs.plannerMode || state.plannerMode;
+        state.plannerDirection = prefs.plannerDirection || state.plannerDirection;
+      }
+    } catch (err) {
+      console.warn('Failed to load prefs', err);
+    }
+    try {
+      const overrideVal = localStorage.getItem(OVERRIDE_KEY);
+      if (overrideVal) {
+        const parsed = new Date(overrideVal);
+        if (!Number.isNaN(parsed.getTime())) {
+          state.overrideNow = parsed.toISOString();
+        }
+      }
+    } catch (err) {
+      console.warn('Failed to load override', err);
+    }
+  }
+
+  function persistState() {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ events: state.events }));
+    localStorage.setItem(
+      PREFS_KEY,
+      JSON.stringify({
+        textScale: state.textScale,
+        theme: state.theme,
+        timeZone: state.timeZone,
+        targetTime: state.targetTime,
+        dailyStep: state.dailyStep,
+        plannerMode: state.plannerMode,
+        plannerDirection: state.plannerDirection
+      })
+    );
+    if (state.overrideNow) {
+      localStorage.setItem(OVERRIDE_KEY, state.overrideNow);
+    } else {
+      localStorage.removeItem(OVERRIDE_KEY);
+    }
+  }
+
+  function clamp(value, min, max) {
+    return Math.min(max, Math.max(min, value));
+  }
+
+  function createSVG(tag, attrs = {}) {
+    const el = document.createElementNS('http://www.w3.org/2000/svg', tag);
+    Object.entries(attrs).forEach(([key, value]) => {
+      el.setAttribute(key, value);
+    });
+    return el;
+  }
+
+  function angleFromMinutes(mins) {
+    return (mins / MINUTES_IN_DAY) * 360;
+  }
+
+  function describeArc(cx, cy, r, startAngle, endAngle) {
+    const start = polarToCartesian(cx, cy, r, endAngle);
+    const end = polarToCartesian(cx, cy, r, startAngle);
+    const largeArcFlag = endAngle - startAngle <= 180 ? '0' : '1';
+    return `M ${start.x} ${start.y} A ${r} ${r} 0 ${largeArcFlag} 0 ${end.x} ${end.y}`;
+  }
+
+  function polarToCartesian(cx, cy, r, angleInDegrees) {
+    const angleInRadians = ((angleInDegrees - 90) * Math.PI) / 180.0;
+    return {
+      x: cx + r * Math.cos(angleInRadians),
+      y: cy + r * Math.sin(angleInRadians)
+    };
+  }
+
+  function normaliseAngle(angle) {
+    return ((angle % 360) + 360) % 360;
+  }
+
+  function minuteFromAngle(angle) {
+    const normalised = normaliseAngle(angle);
+    return Math.round((normalised / 360) * MINUTES_IN_DAY) % MINUTES_IN_DAY;
+  }
+
+  function formatDuration(minutes) {
+    const hrs = Math.floor(minutes / 60);
+    const mins = minutes % 60;
+    if (hrs && mins) return `${hrs}h ${mins}m`;
+    if (hrs) return `${hrs}h`;
+    return `${mins}m`;
+  }
+
+  function getSnapStep(evt) {
+    if (evt.shiftKey) return SNAP_SHIFT;
+    if (evt.altKey) return SNAP_ALT;
+    return SNAP_DEFAULT;
+  }
+
+  function snapMinutes(mins, step) {
+    return Math.round(mins / step) * step;
+  }
+
+  function getFormatter(tz) {
+    const key = tz || 'local';
+    if (!formatterCache.has(key)) {
+      const opts = { hour: '2-digit', minute: '2-digit', hour12: false };
+      const fmt = key === 'local' ? new Intl.DateTimeFormat(undefined, opts) : new Intl.DateTimeFormat(undefined, { ...opts, timeZone: key });
+      formatterCache.set(key, fmt);
     }
     return formatterCache.get(key);
   }
-  function wallMinutesAt(date,tz){
-    const formatter=getFormatterForTZ(tz);
-    const parts=formatter.formatToParts(date);
-    const h=Number(parts.find(p=>p.type==='hour')?.value||'0');
-    const m=Number(parts.find(p=>p.type==='minute')?.value||'0');
-    return modDay(h*60+m);
-  }
-  function convertMinutesBetweenTZ(fromTZ,toTZ,ymd,minutes){
-    const base=new Date(ymd+'T00:00:00Z');
-    let ts=base;let cur=wallMinutesAt(ts,fromTZ);let d=((minutes-cur+MINUTES_IN_DAY)%MINUTES_IN_DAY);if(d>720)d-=MINUTES_IN_DAY;ts=new Date(ts.getTime()+d*60000);
-    cur=wallMinutesAt(ts,fromTZ);d=((minutes-cur+MINUTES_IN_DAY)%MINUTES_IN_DAY);if(d>720)d-=MINUTES_IN_DAY;ts=new Date(ts.getTime()+d*60000);
-    return wallMinutesAt(ts,toTZ);
-  }
-  function computeDayEvents(wakeMin,sleepDurationMin){
-    return {wake:modDay(wakeMin),lunch:modDay(wakeMin+5*60),dinner:modDay(wakeMin+11*60),sleep:modDay(wakeMin-sleepDurationMin)};
-  }
-  function computePlanSchedule({wakeM,sleepM,plannerMode,targetTimeM,dailyStep,direction,nDays,fromDate}){
-    const startTime=plannerMode==='wake'?wakeM:sleepM;
-    const target=modDay(targetTimeM);
-    let delta=((target-startTime)%MINUTES_IN_DAY+MINUTES_IN_DAY)%MINUTES_IN_DAY;if(delta>720)delta-=MINUTES_IN_DAY;
-    if(direction==='earlier'&&delta>0)delta-=MINUTES_IN_DAY; if(direction==='later'&&delta<0)delta+=MINUTES_IN_DAY;
-    const step=Math.min(240,Math.max(5,dailyStep));
-    const days=Math.max(1,Math.floor(nDays));
-    const perDay=Math.max(-step,Math.min(step,Math.round(delta/days)));
-    const rows=[]; let t=startTime;
-    for(let i=1;i<=days;i++){
-      const d=new Date(fromDate.getFullYear(),fromDate.getMonth(),fromDate.getDate()+i);
-      t=modDay(t+perDay); rows.push({day:i,date:d.toDateString(),time:t});
-    }
-    if(rows.length>0) rows[rows.length-1].time=target;
-    return rows;
+
+  function toTimeInZone(date, tz) {
+    const fmt = getFormatter(tz);
+    const parts = fmt.formatToParts(date);
+    const hours = Number(parts.find((p) => p.type === 'hour')?.value || '0');
+    const minutes = Number(parts.find((p) => p.type === 'minute')?.value || '0');
+    return { hours, minutes };
   }
 
-  // ---------- state ----------
-  const state={
-    wake:'10:00',
-    wakeDuration:15*60,
-    show12h:true,
-    timeZone:'local',
-    plannerMode:'wake',
-    targetTime:'07:00',
-    targetDate:todayAsYYYYMMDD(),
-    dailyStep:30,
-    direction:'auto',
-    startDate:todayAsYYYYMMDD(),
-    textScale:1,
-    theme:'dark',
-    day:{
-      scheduleId:DEFAULT_SCHEDULE_ID,
-      dirty:false,
-      items:[],
-    },
-    savedSchedules:{},
-  };
+  function minutesInZone(date, tz) {
+    const { hours, minutes } = toTimeInZone(date, tz);
+    return (hours * 60 + minutes) % MINUTES_IN_DAY;
+  }
 
-  // ---------- DOM ----------
-  const $=id=>document.getElementById(id);
-  const wakeInput=$('wakeInput');
-  const wakeDuration=$('wakeDuration');
-  const sleepFrom=$('sleepFrom');
-  const sleepTo=$('sleepTo');
-  const sleepHours=$('sleepHours');
-  const sleepHours2=$('sleepHours2');
-  const feelsLike=$('feelsLike');
-  const toggleFormat=$('toggleFormat');
-  const targetDate=$('targetDate');
-  const plannerMode=$('plannerMode');
-  const plannerModeLabel=$('plannerModeLabel');
-  const timeZone=$('timeZone');
-  const targetTime=$('targetTime');
-  const dailyStep=$('dailyStep');
-  const dailyStepLabel=$('dailyStepLabel');
-  const planBody=$('planBody');
-  const dirButtons=Array.from(document.querySelectorAll('[data-dir]'));
-  const yourDayList=$('yourDayList');
-  const addDayItem=$('addDayItem');
-  const yourDayName=$('yourDayName');
-  const yourDaySelect=$('yourDaySelect');
-  const yourDayRemove=$('yourDayRemove');
-  const yourDaySave=$('yourDaySave');
-  const yourDayReset=$('yourDayReset');
-  const textScaleDown=$('textScaleDown');
-  const textScaleUp=$('textScaleUp');
-  const themeButtons=Array.from(document.querySelectorAll('[data-theme-choice]'));
-  const analogClock=$('analogClock');
-  const clockDate=$('clockDate');
-  const saveBtn=$('saveBtn');
-  const loadBtn=$('loadBtn');
-  const shareBtn=$('shareBtn');
-  const toastContainer=$('toastContainer');
-  const shareLayer=$('shareLayer');
-  const shareLinkInput=$('shareLinkInput');
-  const shareCodeEl=$('shareCode');
-  const shareCopyLink=$('shareCopyLink');
-  const shareCopyCode=$('shareCopyCode');
-  const overrideInput=$('overrideInput');
-  const applyOverride=$('applyOverride');
-  const clearOverride=$('clearOverride');
-  const overrideStatus=$('overrideStatus');
-  function updateOverrideUI(customMessage){
-    if(overrideStatus){
-      if(customMessage){
-        overrideStatus.textContent=customMessage;
-      } else if(overrideNowDate){
-        overrideStatus.textContent=`Overriding current time: ${overrideNowDate.toLocaleString()}`;
-      } else {
-        overrideStatus.textContent='Using real current time.';
+  function rotatePoint(mins, radius, center, offset = 0) {
+    const angle = ((mins / MINUTES_IN_DAY) * 360) - 90 + offset;
+    return polarToCartesian(center, center, radius, angle + 90);
+  }
+
+  function applyTheme(theme) {
+    const next = theme === 'light' ? 'light' : 'dark';
+    document.documentElement.setAttribute('data-theme', next);
+    state.theme = next;
+    themeButtons.forEach((btn) => {
+      const choice = btn.getAttribute('data-theme-choice');
+      btn.setAttribute('aria-pressed', choice === next ? 'true' : 'false');
+    });
+    persistState();
+  }
+
+  function applyTextScale(scale) {
+    state.textScale = clamp(scale, MIN_TEXT_SCALE, MAX_TEXT_SCALE);
+    document.documentElement.style.setProperty('--scale', state.textScale);
+    if (textScaleDown) textScaleDown.disabled = state.textScale <= MIN_TEXT_SCALE + 0.001;
+    if (textScaleUp) textScaleUp.disabled = state.textScale >= MAX_TEXT_SCALE - 0.001;
+    persistState();
+  }
+
+  function setTimezone(tz) {
+    state.timeZone = timezoneLocations[tz] ? tz : 'local';
+    if (timeZoneSelect) timeZoneSelect.value = state.timeZone;
+    updateTimezoneToggle();
+    persistState();
+    render();
+  }
+
+  function updateTimezoneToggle() {
+    const tzLabel = timezoneLocations[state.timeZone]?.label || 'Local';
+    timezoneToggle.textContent = `${tzLabel} · 24h`;
+  }
+
+  function getEventColor(type) {
+    const key = eventTypes[type]?.colorKey || 'wake';
+    return getComputedStyle(document.documentElement).getPropertyValue(`--${key}`).trim();
+  }
+
+  function render() {
+    renderClock();
+    renderDayList();
+    renderNudgePlan();
+    renderNextEventLabel();
+    updateGhostButtonState();
+  }
+
+  function renderClock() {
+    if (!dayRing) return;
+    const size = 400;
+    const center = size / 2;
+    const radius = 150;
+    dayRing.setAttribute('viewBox', `0 0 ${size} ${size}`);
+    while (dayRing.firstChild) dayRing.removeChild(dayRing.firstChild);
+
+    const backdrop = createSVG('circle', { cx: center, cy: center, r: radius, class: 'clock-backdrop' });
+    dayRing.appendChild(backdrop);
+
+    const { sunrise, sunset } = calculateSunTimes(state.timeZone);
+    if (sunrise !== null && sunset !== null) {
+      const daylightGroup = createSVG('g');
+      const start = angleFromMinutes(sunrise);
+      const end = angleFromMinutes(sunset);
+      if (start !== end) {
+        const daylightArc = createSVG('path', {
+          d: describeArc(center, center, radius, start, end),
+          class: 'clock-daylight'
+        });
+        daylightGroup.appendChild(daylightArc);
+        const nightArc1 = createSVG('path', {
+          d: describeArc(center, center, radius, end, start + 360),
+          class: 'clock-night'
+        });
+        daylightGroup.appendChild(nightArc1);
+        dayRing.appendChild(daylightGroup);
       }
     }
-    if(overrideInput&&document.activeElement!==overrideInput){
-      overrideInput.value=overrideNowDate?formatDatetimeLocal(overrideNowDate):'';
+
+    for (let h = 0; h < 24; h++) {
+      const angle = (h / 24) * 360;
+      const line = createSVG('line', {
+        x1: center + Math.cos(((angle - 90) * Math.PI) / 180) * (radius - 24),
+        y1: center + Math.sin(((angle - 90) * Math.PI) / 180) * (radius - 24),
+        x2: center + Math.cos(((angle - 90) * Math.PI) / 180) * (radius + 8),
+        y2: center + Math.sin(((angle - 90) * Math.PI) / 180) * (radius + 8),
+        class: 'clock-hour-tick'
+      });
+      dayRing.appendChild(line);
+    }
+
+    const now = getNow();
+    const nowMinutes = minutesInZone(now, state.timeZone);
+    const nowHand = createSVG('line', {
+      x1: center,
+      y1: center,
+      x2: center + Math.cos(((angleFromMinutes(nowMinutes) - 90) * Math.PI) / 180) * (radius + 10),
+      y2: center + Math.sin(((angleFromMinutes(nowMinutes) - 90) * Math.PI) / 180) * (radius + 10),
+      class: 'clock-now-hand'
+    });
+    dayRing.appendChild(nowHand);
+
+    const feelsLikeMinutes = (nowMinutes + 30) % MINUTES_IN_DAY;
+    const feelsLikeHand = createSVG('line', {
+      x1: center,
+      y1: center,
+      x2: center + Math.cos(((angleFromMinutes(feelsLikeMinutes) - 90) * Math.PI) / 180) * (radius - 32),
+      y2: center + Math.sin(((angleFromMinutes(feelsLikeMinutes) - 90) * Math.PI) / 180) * (radius - 32),
+      class: 'clock-feels-hand'
+    });
+    dayRing.appendChild(feelsLikeHand);
+
+    const centerDot = createSVG('circle', { cx: center, cy: center, r: 6, class: 'clock-center' });
+    dayRing.appendChild(centerDot);
+
+    renderEventArcs(center, radius);
+    updateClockLabels(nowMinutes, feelsLikeMinutes);
+  }
+
+  function updateClockLabels(nowMinutes, feelsMinutes) {
+    nowLabel.textContent = `Now · ${minutesToTime(nowMinutes)}`;
+    feelsLikeLabel.textContent = `Feels like ${minutesToTime(feelsMinutes)}`;
+  }
+
+  function renderEventArcs(center, radius) {
+    const filteredTypes = state.activeFilter === 'all' ? null : state.activeFilter;
+    const events = state.events
+      .filter((evt) => !filteredTypes || evt.type === filteredTypes)
+      .slice()
+      .sort((a, b) => a.startMin - b.startMin);
+    const ghostOffset = state.ghostVisible ? state.ghostDelta : 0;
+
+    events.forEach((evt) => {
+      drawEventArc(evt, center, radius, false);
+      if (state.ghostVisible) {
+        drawEventArc(shiftEvent(evt, ghostOffset), center, radius, true);
+      }
+    });
+
+    if (state.selectedId) {
+      const selected = events.find((evt) => evt.id === state.selectedId);
+      if (selected) {
+        drawHandles(selected, center, radius);
+      }
     }
   }
 
-  function applyTextScale(){
-    if(typeof document==='undefined'||!document.documentElement) return;
-    document.documentElement.style.setProperty('--font-scale',String(state.textScale||1));
-    updateDisplayControls();
+  function shiftEvent(evt, delta) {
+    const shift = ((delta % MINUTES_IN_DAY) + MINUTES_IN_DAY) % MINUTES_IN_DAY;
+    return {
+      ...evt,
+      startMin: (evt.startMin + shift + MINUTES_IN_DAY) % MINUTES_IN_DAY,
+      endMin: (evt.endMin + shift + MINUTES_IN_DAY) % MINUTES_IN_DAY
+    };
   }
-  function applyTheme(theme){
-    if(typeof document==='undefined'||!document.documentElement) return;
-    const next=theme==='light'?'light':'dark';
-    document.documentElement.setAttribute('data-theme',next);
-    state.theme=next;
-    updateThemeButtons();
-  }
-  function updateDisplayControls(){
-    if(textScaleDown) textScaleDown.disabled=(state.textScale||1)<=MIN_TEXT_SCALE+0.001;
-    if(textScaleUp) textScaleUp.disabled=(state.textScale||1)>=MAX_TEXT_SCALE-0.001;
-  }
-  function updateThemeButtons(){
-    themeButtons.forEach(btn=>{
-      const value=btn.getAttribute('data-theme-choice');
-      const active=value===state.theme;
-      btn.setAttribute('aria-pressed',active?'true':'false');
-      if(active) btn.classList.add('btn--active'); else btn.classList.remove('btn--active');
+
+  function drawEventArc(evt, center, radius, ghost) {
+    const segments = splitEvent(evt.startMin, evt.endMin);
+    segments.forEach(([start, end]) => {
+      const startAngle = angleFromMinutes(start);
+      const endAngle = angleFromMinutes(end);
+      const path = createSVG('path', {
+        d: describeArc(center, center, radius, startAngle, endAngle < startAngle ? endAngle + 360 : endAngle),
+        class: 'arc-path',
+        'data-type': evt.type,
+        'data-event-id': evt.id,
+        'data-ghost': ghost ? 'true' : 'false',
+        'data-selected': state.selectedId === evt.id ? 'true' : 'false',
+        stroke: getEventColor(evt.type)
+      });
+      path.addEventListener('pointerenter', () => handleArcHover(evt.id));
+      path.addEventListener('pointerleave', () => handleArcHover(null));
+      path.addEventListener('click', (event) => {
+        event.stopPropagation();
+        selectEvent(evt.id);
+      });
+      dayRing.appendChild(path);
     });
   }
 
-  function showToast(message,variant='info',duration=3400){
-    if(!toastContainer){
-      if(typeof window!=='undefined'&&typeof window.alert==='function'){
-        window.alert(message);
+  function splitEvent(start, end) {
+    if (start === end) return [[start, (end + MINUTES_IN_DAY - 1) % MINUTES_IN_DAY]];
+    if (end > start) return [[start, end]];
+    return [
+      [start, MINUTES_IN_DAY],
+      [0, end]
+    ];
+  }
+
+  function drawHandles(evt, center, radius) {
+    const startPoint = rotatePoint(evt.startMin, radius, center);
+    const endPoint = rotatePoint(evt.endMin, radius, center);
+    const startHandle = createSVG('circle', {
+      cx: startPoint.x,
+      cy: startPoint.y,
+      r: 10,
+      class: 'arc-handle',
+      'data-handle': 'start',
+      'data-event-id': evt.id
+    });
+    const endHandle = createSVG('circle', {
+      cx: endPoint.x,
+      cy: endPoint.y,
+      r: 10,
+      class: 'arc-handle',
+      'data-handle': 'end',
+      'data-event-id': evt.id
+    });
+    [startHandle, endHandle].forEach((handle) => {
+      handle.addEventListener('pointerdown', handlePointerStart);
+      handle.addEventListener('keydown', (evtKey) => handleKeyboardResize(evtKey, handle.dataset.handle));
+    });
+    dayRing.appendChild(startHandle);
+    dayRing.appendChild(endHandle);
+  }
+
+  function handleArcHover(id) {
+    const items = dayList.querySelectorAll('.day-item');
+    items.forEach((item) => {
+      item.dataset.hover = item.dataset.id === id ? 'true' : 'false';
+    });
+  }
+
+  function selectEvent(id) {
+    state.selectedId = id;
+    render();
+  }
+
+  function handlePointerStart(evt) {
+    evt.preventDefault();
+    const id = evt.currentTarget.getAttribute('data-event-id');
+    const edge = evt.currentTarget.getAttribute('data-handle');
+    state.pointerDrag = { id, edge };
+    evt.currentTarget.setPointerCapture(evt.pointerId);
+    evt.currentTarget.addEventListener('pointermove', handlePointerMove);
+    evt.currentTarget.addEventListener('pointerup', handlePointerEnd);
+    evt.currentTarget.addEventListener('pointercancel', handlePointerEnd);
+  }
+
+  function handlePointerMove(evt) {
+    if (!state.pointerDrag) return;
+    const { id, edge } = state.pointerDrag;
+    const event = state.events.find((e) => e.id === id);
+    if (!event) return;
+    const minutes = snapMinutes(getMinutesFromPointer(evt), getSnapStep(evt));
+    if (edge === 'start') {
+      const duration = minutesDiff(minutes, event.endMin);
+      if (duration >= MIN_EVENT_DURATION) {
+        event.startMin = minutes;
       }
+    } else {
+      const duration = minutesDiff(event.startMin, minutes);
+      if (duration >= MIN_EVENT_DURATION) {
+        event.endMin = minutes;
+      }
+    }
+    persistState();
+    render();
+  }
+
+  function handlePointerEnd(evt) {
+    if (!state.pointerDrag) return;
+    state.pointerDrag = null;
+    evt.currentTarget.releasePointerCapture(evt.pointerId);
+    evt.currentTarget.removeEventListener('pointermove', handlePointerMove);
+    evt.currentTarget.removeEventListener('pointerup', handlePointerEnd);
+    evt.currentTarget.removeEventListener('pointercancel', handlePointerEnd);
+  }
+
+  function handleKeyboardResize(evt, edge) {
+    const increment = evt.shiftKey ? SNAP_SHIFT : SNAP_DEFAULT;
+    if (!['ArrowLeft', 'ArrowRight'].includes(evt.key)) return;
+    evt.preventDefault();
+    const id = evt.target.getAttribute('data-event-id');
+    const event = state.events.find((e) => e.id === id);
+    if (!event) return;
+    const delta = evt.key === 'ArrowRight' ? increment : -increment;
+    if (edge === 'start') {
+      const next = (event.startMin + delta + MINUTES_IN_DAY) % MINUTES_IN_DAY;
+      const duration = minutesDiff(next, event.endMin);
+      if (duration >= MIN_EVENT_DURATION) {
+        event.startMin = next;
+      }
+    } else {
+      const next = (event.endMin + delta + MINUTES_IN_DAY) % MINUTES_IN_DAY;
+      const duration = minutesDiff(event.startMin, next);
+      if (duration >= MIN_EVENT_DURATION) {
+        event.endMin = next;
+      }
+    }
+    persistState();
+    render();
+  }
+
+  function getMinutesFromPointer(evt) {
+    const rect = dayRing.getBoundingClientRect();
+    const x = evt.clientX - rect.left;
+    const y = evt.clientY - rect.top;
+    const cx = rect.width / 2;
+    const cy = rect.height / 2;
+    const angle = (Math.atan2(y - cy, x - cx) * 180) / Math.PI + 90;
+    return minuteFromAngle(angle);
+  }
+
+  function renderDayList() {
+    if (!dayList) return;
+    dayList.innerHTML = '';
+    if (!state.events.length) {
+      const empty = document.createElement('li');
+      empty.className = 'text-muted';
+      empty.textContent = 'No events yet. Add items to build your day.';
+      dayList.appendChild(empty);
       return;
     }
-    const toast=document.createElement('div');
-    const variantClass=`toast--${variant||'info'}`;
-    toast.classList.add('toast',variantClass);
-    toast.textContent=message;
-    toastContainer.appendChild(toast);
-    requestAnimationFrame(()=>{
-      requestAnimationFrame(()=>toast.classList.add('toast--visible'));
-    });
-    const remove=()=>{
-      toast.classList.remove('toast--visible');
-      setTimeout(()=>toast.remove(),250);
-    };
-    const timeout=setTimeout(remove,duration);
-    toast.addEventListener('click',()=>{
-      clearTimeout(timeout);
-      remove();
-    });
-  }
+    state.events.forEach((evt) => {
+        const li = document.createElement('li');
+        li.className = 'day-item';
+        li.draggable = true;
+        li.dataset.id = evt.id;
+        if (evt.id === state.selectedId) {
+          li.dataset.selected = 'true';
+        }
+        const meta = eventTypes[evt.type] || eventTypes.custom;
+        const icon = document.createElement('div');
+        icon.className = 'day-item__icon';
+        icon.textContent = meta.icon;
 
-  async function copyTextToClipboard(text){
-    if(!text) return false;
-    try{
-      if(typeof navigator!=='undefined'&&navigator.clipboard?.writeText){
-        await navigator.clipboard.writeText(text);
-        return true;
-      }
-    }catch(err){/* ignore */}
-    if(typeof document==='undefined'||!document.body) return false;
-    try{
-      const textarea=document.createElement('textarea');
-      textarea.value=text;
-      textarea.setAttribute('readonly','');
-      textarea.style.position='fixed';
-      textarea.style.opacity='0';
-      document.body.appendChild(textarea);
-      textarea.focus();
-      textarea.select();
-      const result=document.execCommand('copy');
-      document.body.removeChild(textarea);
-      return result;
-    }catch(err){
-      return false;
-    }
-  }
-
-  function savePreferences(){
-    try{
-      const payload={version:1,textScale:state.textScale,theme:state.theme};
-      localStorage.setItem(PREFS_KEY,JSON.stringify(payload));
-    }catch(err){/* ignore */}
-  }
-  function loadPreferences(){
-    try{
-      const raw=localStorage.getItem(PREFS_KEY); if(!raw) return;
-      const data=JSON.parse(raw);
-      if(data?.version!==1) return;
-      if(typeof data.textScale==='number') state.textScale=clamp(data.textScale,MIN_TEXT_SCALE,MAX_TEXT_SCALE);
-      if(data.theme==='dark'||data.theme==='light') state.theme=data.theme;
-    }catch(err){console.warn('prefs load failed',err);}
-  }
-  function persistSchedules(){
-    try{
-      const payload={
-        version:1,
-        schedules:Object.values(state.savedSchedules).map(item=>({
-          id:item.id,
-          name:item.name,
-          items:cloneDayItems(item.items),
-        })),
-      };
-      localStorage.setItem(SCHEDULES_KEY,JSON.stringify(payload));
-    }catch(err){console.warn('schedule save failed',err);}
-  }
-  function loadSchedules(){
-    try{
-      const raw=localStorage.getItem(SCHEDULES_KEY); if(!raw) return;
-      const data=JSON.parse(raw);
-      if(data?.version!==1||!Array.isArray(data.schedules)) return;
-      const next={};
-      data.schedules.forEach(item=>{
-        if(!item) return;
-        const id=item.id||slugifyScheduleName(item.name);
-        if(!id) return;
-        next[id]={
-          id,
-          name:item.name||'Schedule',
-          items:cloneDayItems(item.items),
-        };
-      });
-      state.savedSchedules=next;
-    }catch(err){console.warn('schedule load failed',err);}
-  }
-  function slugifyScheduleName(name){
-    if(!name) return '';
-    const base=String(name).toLowerCase().trim().replace(/[^a-z0-9]+/g,'-').replace(/(^-|-$)/g,'');
-    if(base) return base;
-    return `schedule-${Date.now()}`;
-  }
-  function cloneDayItems(items){
-    if(!Array.isArray(items)) return [];
-    return items.map(item=>({
-      time:normalizeTimeString(item?.time||'00:00','00:00'),
-      label:String(item?.label??'').trim(),
-    }));
-  }
-  function sortDayItemsInPlace(items){
-    if(!Array.isArray(items)) return;
-    items.sort((a,b)=>toMinutes(a?.time||'00:00')-toMinutes(b?.time||'00:00'));
-  }
-  function getDefaultDayItems(wakeM,sleepDuration){
-    const events=computeDayEvents(wakeM,sleepDuration);
-    return [
-      {time:minutesToTimeString(events.wake),label:'Wake'},
-      {time:minutesToTimeString(events.lunch),label:'Lunch'},
-      {time:minutesToTimeString(events.dinner),label:'Dinner'},
-      {time:minutesToTimeString(events.sleep),label:'Sleep'},
-    ];
-  }
-  function ensureDefaultDaySnapshot(){
-    if(state.day.scheduleId===DEFAULT_SCHEDULE_ID&&!state.day.dirty){
-      const wakeM=toMinutes(state.wake);
-      const sleepDuration=MINUTES_IN_DAY-state.wakeDuration;
-      state.day.items=cloneDayItems(getDefaultDayItems(wakeM,sleepDuration));
-    }
-  }
-  function updateScheduleSelect(){
-    if(!yourDaySelect) return;
-    const currentValue=state.day.scheduleId;
-    const options=[{value:DEFAULT_SCHEDULE_ID,label:'Default'}];
-    const entries=Object.values(state.savedSchedules||{}).sort((a,b)=>a.name.localeCompare(b.name));
-    entries.forEach(item=>options.push({value:item.id,label:item.name||'Schedule'}));
-    yourDaySelect.innerHTML='';
-    options.forEach(opt=>{
-      const option=document.createElement('option');
-      option.value=opt.value;
-      option.textContent=opt.label;
-      yourDaySelect.appendChild(option);
-    });
-    if(options.some(opt=>opt.value===currentValue)){
-      yourDaySelect.value=currentValue;
-    }else{
-      yourDaySelect.value=DEFAULT_SCHEDULE_ID;
-    }
-  }
-  function renderYourDaySection(wakeM,sleepDuration){
-    if(!yourDayList) return;
-    if(state.day.scheduleId===DEFAULT_SCHEDULE_ID&&!state.day.dirty){
-      state.day.items=cloneDayItems(getDefaultDayItems(wakeM,sleepDuration));
-    }
-    yourDayList.innerHTML='';
-    if(!Array.isArray(state.day.items)||state.day.items.length===0){
-      const empty=document.createElement('div');
-      empty.className='yourday-empty';
-      empty.textContent='No items yet. Add your first entry.';
-      yourDayList.appendChild(empty);
-    }else{
-      sortDayItemsInPlace(state.day.items);
-      state.day.items.forEach((item,index)=>{
-        const row=document.createElement('div');
-        row.className='yourday-row';
-        row.dataset.index=String(index);
-        const labelText=(item.label||'').trim();
-        const fallback=`item ${index+1}`;
-        const ariaLabel=escapeHtml(labelText||fallback);
-        const timeValue=escapeHtml(item.time||'00:00');
-        row.innerHTML=
-          `<input type="time" value="${timeValue}" data-field="time" aria-label="Time for ${ariaLabel}">`+
-          `<input type="text" value="${escapeHtml(labelText)}" placeholder="Label" data-field="label" aria-label="Label for ${ariaLabel}">`+
-          `<button type="button" class="yourday-remove" data-remove aria-label="Remove ${ariaLabel}">×</button>`;
-        yourDayList.appendChild(row);
-      });
-    }
-    updateScheduleSelect();
-    if(yourDayRemove){
-      yourDayRemove.disabled=state.day.scheduleId===DEFAULT_SCHEDULE_ID;
-    }
-    if(yourDayName&&document.activeElement!==yourDayName){
-      if(state.day.scheduleId===DEFAULT_SCHEDULE_ID){
-        yourDayName.value='';
-      }else{
-        yourDayName.value=state.savedSchedules?.[state.day.scheduleId]?.name||'';
-      }
-    }
-  }
-  function loadScheduleById(id){
-    if(id===DEFAULT_SCHEDULE_ID){
-      state.day.scheduleId=DEFAULT_SCHEDULE_ID;
-      state.day.dirty=false;
-      const wakeM=toMinutes(state.wake);
-      const sleepDuration=MINUTES_IN_DAY-state.wakeDuration;
-      state.day.items=cloneDayItems(getDefaultDayItems(wakeM,sleepDuration));
-      return true;
-    }
-    const schedule=state.savedSchedules?.[id];
-    if(!schedule) return false;
-    state.day.scheduleId=id;
-    state.day.dirty=true;
-    state.day.items=cloneDayItems(schedule.items);
-    return true;
-  }
-
-  let lastFocusedBeforeShare=null;
-  function isShareOpen(){
-    return !!(shareLayer&&!shareLayer.hasAttribute('hidden'));
-  }
-  function openShareDialog(link,code){
-    if(!shareLayer) return;
-    lastFocusedBeforeShare=document.activeElement instanceof HTMLElement?document.activeElement:null;
-    shareLayer.hidden=false;
-    if(shareLinkInput){
-      shareLinkInput.value=link||'';
-      try{shareLinkInput.focus({preventScroll:true});}
-      catch(e){shareLinkInput.focus();}
-      shareLinkInput.select();
-    }
-    if(shareCodeEl){
-      shareCodeEl.textContent=code||'';
-    }
-  }
-  function closeShareDialog(){
-    if(!shareLayer) return;
-    shareLayer.hidden=true;
-    if(lastFocusedBeforeShare&&typeof lastFocusedBeforeShare.focus==='function'){
-      lastFocusedBeforeShare.focus();
-    }
-  }
-  function applyOverrideValue(value){
-    if(!value){
-      overrideNowDate=null;
-      try{localStorage.removeItem(OVERRIDE_KEY);}catch{}
-      updateOverrideUI();
-      render();
-      return true;
-    }
-    const parsed=parseDatetimeLocal(value);
-    if(!parsed||Number.isNaN(parsed.getTime())){
-      updateOverrideUI('Invalid date/time. Please choose a valid value.');
-      return false;
-    }
-    overrideNowDate=parsed;
-    try{localStorage.setItem(OVERRIDE_KEY,parsed.toISOString());}catch{}
-    updateOverrideUI();
-    render();
-    return true;
-  }
-
-  function updateDirectionButtons(){
-    if(dirButtons.length===0) return;
-    dirButtons.forEach(btn=>{
-      const value=btn.getAttribute('data-dir');
-      const isActive=value===state.direction;
-      btn.classList.toggle('btn--active',isActive);
-      btn.setAttribute('aria-pressed',String(isActive));
-    });
-  }
-
-  let wakeReminderMessage=null;
-  function queueWakeReminder(wakeValue){
-    const wake24=minutesToTimeString(toMinutes(wakeValue));
-    const wake12=format12h(toMinutes(wake24));
-    wakeReminderMessage=`Today's planned wake time (${wake12} / ${wake24}) has been copied into the Wake field. Please update it if your actual wake time for today is different.`;
-  }
-  function maybeShowWakeReminder(){
-    if(!wakeReminderMessage) return;
-    if(typeof window!=='undefined'&&typeof window.alert==='function'){
-      window.alert(wakeReminderMessage);
-    } else {
-      console.info(wakeReminderMessage);
-    }
-    wakeReminderMessage=null;
-  }
-
-  // ---------- persistence ----------
-  const buildSaveObject=(startDate)=>({
-    version:1,
-    savedAt:getNow().toISOString(),
-    planner:{
-      plannerMode:state.plannerMode,
-      direction:state.direction,
-      dailyStep:state.dailyStep,
-      target:{time:state.targetTime,zone:state.timeZone},
-      targetDate:state.targetDate
-    },
-    model:{wake:state.wake,wakeDuration:state.wakeDuration},
-    calendar:{startDate,lastAdvancedDate:todayAsYYYYMMDD()}
-  });
-  const SHARE_PREFIX='NO1';
-  function normalizeTimeString(value,defaultValue){
-    return minutesToTimeString(toMinutes(value||defaultValue));
-  }
-  function encodePlanToShareText(data){
-    const entries=[
-      ['mode',data.planner?.plannerMode||'wake'],
-      ['dir',data.planner?.direction||'auto'],
-      ['step',clamp(Number(data.planner?.dailyStep??30),5,240)],
-      ['tz',data.planner?.target?.zone||'local'],
-      ['target',normalizeTimeString(data.planner?.target?.time||'07:00','07:00')],
-      ['date',data.planner?.targetDate||todayAsYYYYMMDD()],
-      ['wake',normalizeTimeString(data.model?.wake||'10:00','10:00')],
-      ['dur',clamp(Number(data.model?.wakeDuration??(15*60)),720,1200)],
-      ['start',data.calendar?.startDate||todayAsYYYYMMDD()]
-    ];
-    return `${SHARE_PREFIX};`+entries.map(([k,v])=>`${k}=${v}`).join(';');
-  }
-  function decodeSharedPlan(text){
-    if(!text||!text.trim()) return {ok:false,message:'Please paste a shared plan code.'};
-    const normalized=text.trim().replace(/\r?\n/g,';');
-    const parts=normalized.split(';').map(p=>p.trim()).filter(Boolean);
-    if(parts.length===0) return {ok:false,message:'Shared code is empty.'};
-    if(parts[0]!==SHARE_PREFIX) return {ok:false,message:'Unrecognized shared code. It should start with "NO1".'};
-    const map={};
-    for(let i=1;i<parts.length;i++){
-      const part=parts[i];
-      const eq=part.indexOf('=');
-      if(eq===-1) continue;
-      const key=part.slice(0,eq).trim();
-      const value=part.slice(eq+1).trim();
-      if(key) map[key]=value;
-    }
-    const dailyStep=clamp(Number.parseInt(map.step,10)||30,5,240);
-    const wakeDuration=clamp(Number.parseInt(map.dur,10)||state.wakeDuration||15*60,720,1200);
-    const plannerMode=map.mode==='sleep'?'sleep':'wake';
-    const direction=map.dir||'auto';
-    const targetZone=map.tz||'local';
-    const targetTime=normalizeTimeString(map.target||'07:00','07:00');
-    const targetDate=map.date||todayAsYYYYMMDD();
-    const wake=normalizeTimeString(map.wake||state.wake||'10:00','10:00');
-    const startDate=map.start||todayAsYYYYMMDD();
-    return {
-      ok:true,
-      data:{
-        version:1,
-        planner:{
-          plannerMode,
-          direction,
-          dailyStep,
-          target:{time:targetTime,zone:targetZone},
-          targetDate
-        },
-        model:{wake,wakeDuration},
-        calendar:{startDate}
-      }
-    };
-  }
-  function save(){
-    const payload=buildSaveObject(state.startDate);
-    let ok=true;
-    let error=null;
-    try{localStorage.setItem(STORAGE_KEY,JSON.stringify(payload));}
-    catch(err){ok=false; error=err?.message||'storage error';}
-    try{localStorage.setItem(TRANSFER_KEY,JSON.stringify(payload));}
-    catch(err){ok=false; if(!error) error=err?.message||'storage error';}
-    return {ok,error};
-  }
-  function applyImportedPlan(data){
-    if(data?.version!==1) return {ok:false,message:'Invalid plan data: missing version 1.'};
-    state.plannerMode=data.planner?.plannerMode||'wake';
-    state.direction=data.planner?.direction||'auto';
-    state.dailyStep=data.planner?.dailyStep??30;
-    state.timeZone=data.planner?.target?.zone||'local';
-    state.targetTime=data.planner?.target?.time||'07:00';
-    state.targetDate=data.planner?.targetDate||todayAsYYYYMMDD();
-    state.wakeDuration=data.model?.wakeDuration??(15*60);
-    state.wake=minutesToTimeString(toMinutes(data.model?.wake||state.wake));
-    const startCandidate=data.calendar?.startDate;
-    const parsedStart=startCandidate?new Date(startCandidate):null;
-    state.startDate=parsedStart&& !Number.isNaN(parsedStart.getTime())?startCandidate:todayAsYYYYMMDD();
-    const today=todayAsYYYYMMDD();
-    if(new Date(state.startDate)<new Date(today)){
-      const planForToday={
-        planner:{
-          plannerMode:state.plannerMode,
-          direction:state.direction,
-          dailyStep:state.dailyStep,
-          target:{time:state.targetTime,zone:state.timeZone},
-          targetDate:state.targetDate
-        },
-        model:{wake:state.wake,wakeDuration:state.wakeDuration},
-        calendar:{startDate:state.startDate}
-      };
-      const result=rollForwardToToday(planForToday);
-      if(result?.changedWake){
-        queueWakeReminder(result.plannedWake);
-      }
-    }
-    return {ok:true};
-  }
-  function load(){
-    try{
-      const raw=localStorage.getItem(STORAGE_KEY); if(!raw) return;
-      const data=JSON.parse(raw); if(data?.version!==1) return;
-      state.plannerMode=data.planner?.plannerMode||'wake';
-      state.direction=data.planner?.direction||'auto';
-      state.dailyStep=data.planner?.dailyStep??30;
-      state.timeZone=data.planner?.target?.zone||'local';
-      state.targetTime=data.planner?.target?.time||'07:00';
-      state.targetDate=data.planner?.targetDate||todayAsYYYYMMDD();
-      state.wakeDuration=data.model?.wakeDuration??(15*60);
-      state.wake=minutesToTimeString(toMinutes(data.model?.wake||'10:00'));
-      state.startDate=data.calendar?.startDate||todayAsYYYYMMDD();
-      // Optional roll only if stored startDate is in the past
-      const today=todayAsYYYYMMDD();
-      if (new Date(state.startDate) < new Date(today)) {
-        const result=rollForwardToToday({
-          planner:{plannerMode:state.plannerMode,direction:state.direction,dailyStep:state.dailyStep,target:{time:state.targetTime,zone:state.timeZone},targetDate:state.targetDate},
-          model:{wake:state.wake,wakeDuration:state.wakeDuration},
-          calendar:{startDate:state.startDate}
+        const titleWrap = document.createElement('div');
+        titleWrap.className = 'day-item__title';
+        const titleInput = document.createElement('input');
+        titleInput.type = 'text';
+        titleInput.value = evt.title;
+        titleInput.setAttribute('aria-label', 'Event title');
+        titleInput.addEventListener('change', () => {
+          evt.title = titleInput.value.trim() || evt.title;
+          persistState();
+          renderNextEventLabel();
         });
-        if(result?.changedWake){
-          queueWakeReminder(result.plannedWake);
-        }
-      }
-    }catch(e){console.warn('load failed',e)}
-  }
-  function loadSharedPlanFromURL(){
-    if(typeof window==='undefined'||!window.location) return false;
-    let params;
-    try{
-      params=new URLSearchParams(window.location.search);
-    }catch(err){
-      return false;
-    }
-    const code=params.get('plan');
-    if(!code) return false;
-    const parsed=decodeSharedPlan(code);
-    if(!parsed.ok){
-      showToast(parsed.message||'Unable to load shared plan from link.','error');
-      return false;
-    }
-    const result=applyImportedPlan(parsed.data);
-    if(result.ok){
-      if(typeof window!=='undefined'&&window.history?.replaceState){
-        params.delete('plan');
-        const query=params.toString();
-        const newUrl=`${window.location.pathname}${query?`?${query}`:''}${window.location.hash||''}`;
-        window.history.replaceState(null,'',newUrl);
-      }
-      showToast('Shared plan loaded from link.','success');
-      return true;
-    }
-    showToast(result.message||'Unable to load shared plan from link.','error');
-    return false;
-  }
+        const durationLabel = document.createElement('span');
+        durationLabel.className = 'text-muted';
+        durationLabel.textContent = formatDuration(minutesDiff(evt.startMin, evt.endMin));
+        titleWrap.appendChild(titleInput);
+        titleWrap.appendChild(durationLabel);
 
-  // ---------- logic ----------
-  function rollForwardToToday(data){
-    let changedWake=false;
-    let plannedWake=state.wake;
-    try{
-      const sd=data.calendar?.startDate||todayAsYYYYMMDD();
-      state.startDate=sd;
-      const start=new Date(sd); const today=getNow();
-      const daysSince=Math.floor((new Date(today.getFullYear(),today.getMonth(),today.getDate())-new Date(start.getFullYear(),start.getMonth(),start.getDate()))/(24*60*60*1000));
-      const localTargetM=convertMinutesBetweenTZ(data.planner?.target?.zone||'local','local',data.planner?.targetDate||todayAsYYYYMMDD(),toMinutes(data.planner?.target?.time||'07:00'));
-      const wm=toMinutes(data.model?.wake||state.wake);
-      const sdur=data.model?.wakeDuration??state.wakeDuration;
-      const rows=computePlanSchedule({
-        wakeM:wm,
-        sleepM:modDay(wm-(MINUTES_IN_DAY-sdur)),
-        plannerMode:data.planner?.plannerMode||state.plannerMode,
-        targetTimeM:localTargetM,
-        dailyStep:data.planner?.dailyStep??state.dailyStep,
-        direction:data.planner?.direction||state.direction,
-        nDays:Math.max(1,Math.floor((new Date(data.planner?.targetDate||todayAsYYYYMMDD())-new Date(sd))/(24*60*60*1000))),
-        fromDate:new Date(sd)
-      });
-      let todaysMinutes;
-      if(daysSince<=0) todaysMinutes=wm; else if(daysSince>=rows.length) todaysMinutes=localTargetM; else todaysMinutes=rows[daysSince]?.time||localTargetM;
-      if((data.planner?.plannerMode||state.plannerMode)==='wake'){
-        plannedWake=minutesToTimeString(todaysMinutes);
-      } else {
-        const w=modDay(todaysMinutes+sdur); plannedWake=minutesToTimeString(w);
-      }
-      if(plannedWake!==state.wake){
-        state.wake=plannedWake;
-        changedWake=true;
-      }
-    }catch(e){console.warn('rollForwardToToday failed',e)}
-    return {changedWake,plannedWake};
-  }
+        const timeButton = document.createElement('button');
+        timeButton.className = 'btn btn-ghost';
+        timeButton.type = 'button';
+        timeButton.textContent = `${minutesToLabel(evt.startMin)} – ${minutesToLabel(evt.endMin)}`;
+        timeButton.addEventListener('click', () => openTimeEditor(li, evt));
 
-  // ---------- render ----------
-  function render(){
-    applyTextScale();
-    applyTheme(state.theme);
-    // inputs
-    wakeInput.value=state.wake;
-    wakeDuration.value=String(state.wakeDuration);
-    targetDate.value=state.targetDate;
-    plannerMode.value=state.plannerMode;
-    plannerModeLabel.textContent=state.plannerMode;
-    timeZone.value=state.timeZone;
-    targetTime.value=state.targetTime;
-    dailyStep.value=String(state.dailyStep); dailyStepLabel.textContent=String(state.dailyStep);
+        const dragHandle = document.createElement('span');
+        dragHandle.className = 'drag-handle';
+        dragHandle.textContent = '≡';
 
-    // derived
-    const wakeM=toMinutes(state.wake);
-    const sleepDuration=MINUTES_IN_DAY-state.wakeDuration;
-    const sleepM=modDay(wakeM-sleepDuration);
+        const actions = document.createElement('div');
+        actions.className = 'day-item__actions';
+        const deleteBtn = document.createElement('button');
+        deleteBtn.className = 'btn btn-ghost';
+        deleteBtn.type = 'button';
+        deleteBtn.setAttribute('aria-label', 'Delete event');
+        deleteBtn.textContent = '✕';
+        deleteBtn.addEventListener('click', () => removeEvent(evt.id));
+        actions.appendChild(deleteBtn);
 
-    sleepFrom.textContent=format12h(sleepM);
-    sleepTo.textContent=format12h(wakeM);
-    const hours=Math.round(sleepDuration/60);
-    sleepHours.textContent=String(hours);
-    sleepHours2.textContent=String(hours);
+        li.appendChild(icon);
+        li.appendChild(titleWrap);
+        li.appendChild(timeButton);
+        li.appendChild(dragHandle);
+        li.appendChild(actions);
 
-    renderYourDaySection(wakeM,sleepDuration);
+        li.addEventListener('click', (event) => {
+          if (event.target === deleteBtn || event.target === titleInput || event.target === timeButton) return;
+          selectEvent(evt.id);
+        });
 
-
-    // feels-like clock
-    const now=getNow(); const nowM=now.getHours()*60+now.getMinutes();
-    const normalWake=7*60; const bioOffset=modDay(wakeM-normalWake);
-    const bioMinutes=modDay(nowM-bioOffset);
-    if(feelsLike) feelsLike.textContent=state.show12h?format12h(bioMinutes):`${pad(Math.floor(bioMinutes/60))}:${pad(bioMinutes%60)}`;
-    if(clockDate) clockDate.textContent=now.toLocaleDateString(undefined,{weekday:'short',month:'short',day:'numeric'});
-    if(toggleFormat) toggleFormat.textContent=state.show12h?'12-hour':'24-hour';
-    if(analogClock) drawClock(analogClock,bioMinutes);
-
-    // plan
-    const targetLocal=convertMinutesBetweenTZ(state.timeZone,'local',state.targetDate,toMinutes(state.targetTime));
-    const nDays=(()=>{const p=state.targetDate.split('-').map(Number); if(p.length!==3||p.some(isNaN)) return 1; const end=new Date(p[0],p[1]-1,p[2]); const today=getNow(); const startOf=d=>new Date(d.getFullYear(),d.getMonth(),d.getDate()).getTime(); const diff=Math.round((startOf(end)-startOf(today))/(24*60*60*1000)); return Math.max(1,diff);})();
-    const rows=computePlanSchedule({wakeM,sleepM,plannerMode:state.plannerMode,targetTimeM:targetLocal,dailyStep:state.dailyStep,direction:state.direction,nDays,fromDate:getNow()});
-    if(planBody){
-      planBody.innerHTML='';
-      rows.forEach(row=>{
-        const d=new Date(row.date);
-        const wakeTimeM=state.plannerMode==='wake'?row.time:modDay(row.time+sleepDuration);
-        const sleepTimeM=state.plannerMode==='sleep'?row.time:modDay(row.time-sleepDuration);
-        const tr=document.createElement('tr');
-        tr.innerHTML=`<td>${formatCompactDate(d)}</td><td>${format12h(wakeTimeM)}</td><td>${format12h(sleepTimeM)}</td>`;
-        planBody.appendChild(tr);
-      });
-    }
-
-    updateDirectionButtons();
-  }
-
-  function adjustTextScale(delta){
-    const next=Math.round((state.textScale+delta)*100)/100;
-    state.textScale=clamp(next,MIN_TEXT_SCALE,MAX_TEXT_SCALE);
-    applyTextScale();
-    savePreferences();
-  }
-  function setThemePreference(theme){
-    applyTheme(theme);
-    savePreferences();
-  }
-
-  function drawClock(svgEl,minutes){
-    const cx=100,cy=100,r=84; const color=bioColor(minutes);
-    const hAng=((minutes%720)/720)*360-90; const mAng=((minutes%60)/60)*360-90;
-    svgEl.innerHTML='';
-    const circle=document.createElementNS('http://www.w3.org/2000/svg','circle');
-    circle.setAttribute('cx',cx);circle.setAttribute('cy',cy);circle.setAttribute('r',r);circle.setAttribute('fill','#0f1424');circle.setAttribute('stroke',color);circle.setAttribute('stroke-width','8');
-    svgEl.appendChild(circle);
-    // hour marks
-    for(let i=0;i<12;i++){
-      const a=(i*30-90)*Math.PI/180; const x1=cx+Math.cos(a)*r*0.88, y1=cy+Math.sin(a)*r*0.88; const x2=cx+Math.cos(a)*r, y2=cy+Math.sin(a)*r;
-      const line=document.createElementNS('http://www.w3.org/2000/svg','line');
-      line.setAttribute('x1',x1);line.setAttribute('y1',y1);line.setAttribute('x2',x2);line.setAttribute('y2',y2);line.setAttribute('stroke','#CFE2FF');line.setAttribute('stroke-width',i%3===0?'3':'1');line.setAttribute('stroke-opacity','0.55'); svgEl.appendChild(line);
-    }
-    const toXY=(ang,len)=>{const rad=ang*Math.PI/180;return {x:cx+Math.cos(rad)*len,y:cy+Math.sin(rad)*len}};
-    const h=toXY(hAng,r*0.6), m=toXY(mAng,r*0.82);
-    const hl=document.createElementNS('http://www.w3.org/2000/svg','line'); hl.setAttribute('x1',cx);hl.setAttribute('y1',cy);hl.setAttribute('x2',h.x);hl.setAttribute('y2',h.y);hl.setAttribute('stroke',color);hl.setAttribute('stroke-width','5');hl.setAttribute('stroke-linecap','round'); svgEl.appendChild(hl);
-    const ml=document.createElementNS('http://www.w3.org/2000/svg','line'); ml.setAttribute('x1',cx);ml.setAttribute('y1',cy);ml.setAttribute('x2',m.x);ml.setAttribute('y2',m.y);ml.setAttribute('stroke',color);ml.setAttribute('stroke-opacity','0.7');ml.setAttribute('stroke-width','3');ml.setAttribute('stroke-linecap','round'); svgEl.appendChild(ml);
-    const dot=document.createElementNS('http://www.w3.org/2000/svg','circle'); dot.setAttribute('cx',cx);dot.setAttribute('cy',cy);dot.setAttribute('r',4);dot.setAttribute('fill',color); svgEl.appendChild(dot);
-  }
-  function bioColor(mins){
-    const m=modDay(mins);
-    const PINK='#FF8FB3',YELLOW='#FFD64D',ORANGE='#FF7A3C',MOON='#8EC5FF';
-    if(m>=21*60||m<5*60) return MOON;
-    if(m<7*60) return lerp(PINK,YELLOW,(m-5*60)/(2*60));
-    if(m<18*60) return YELLOW;
-    if(m<20*60) return lerp(YELLOW,ORANGE,(m-18*60)/(2*60));
-    if(m<21*60) return lerp(ORANGE,MOON,(m-20*60)/(1*60));
-    return MOON;
-  }
-  function hexToRgb(hex){const h=hex.replace('#','');const n=parseInt(h,16);const r=(h.length===3?((n>>8)&0xf)*17:(n>>16)&0xff);const g=(h.length===3?((n>>4)&0xf)*17:(n>>8)&0xff);const b=(h.length===3?((n    )&0xf)*17:(n     )&0xff);return {r,g,b};}
-  function rgbToHex(r,g,b){const f=(x)=>x.toString(16).padStart(2,'0');return `#${f(Math.round(r))}${f(Math.round(g))}${f(Math.round(b))}`}
-  function lerp(a,b,t){const A=hexToRgb(a),B=hexToRgb(b);const u=Math.max(0,Math.min(1,t));return rgbToHex(A.r+(B.r-A.r)*u,A.g+(B.g-A.g)*u,A.b+(B.b-A.b)*u)}
-
-  // ---------- events ----------
-  if(textScaleDown) textScaleDown.addEventListener('click',()=>adjustTextScale(-TEXT_SCALE_STEP));
-  if(textScaleUp) textScaleUp.addEventListener('click',()=>adjustTextScale(TEXT_SCALE_STEP));
-  themeButtons.forEach(btn=>{
-    btn.setAttribute('type','button');
-    btn.addEventListener('click',()=>{
-      const value=btn.getAttribute('data-theme-choice');
-      if(!value) return;
-      setThemePreference(value);
-      render();
-    });
-  });
-  if(yourDayList){
-    yourDayList.addEventListener('input',e=>{
-      ensureDefaultDaySnapshot();
-      const target=e.target;
-      if(!(target instanceof Element)||target.tagName!=='INPUT') return;
-      const row=target.closest('[data-index]');
-      if(!row) return;
-      const index=Number(row.dataset.index);
-      if(Number.isNaN(index)||!state.day.items[index]) return;
-      const field=target.getAttribute('data-field');
-      if(field==='time'){
-        const nextValue=normalizeTimeString(target.value,state.day.items[index].time||'00:00');
-        state.day.items[index].time=nextValue;
-        target.value=nextValue;
-      } else if(field==='label'){
-        state.day.items[index].label=target.value;
-      }
-      state.day.dirty=true;
-    });
-    yourDayList.addEventListener('click',e=>{
-      const btn=e.target instanceof Element?e.target.closest('[data-remove]'):null;
-      if(!btn) return;
-      ensureDefaultDaySnapshot();
-      const row=btn.closest('[data-index]');
-      if(!row) return;
-      const index=Number(row.dataset.index);
-      if(Number.isNaN(index)) return;
-      state.day.items.splice(index,1);
-      state.day.dirty=true;
-      render();
-    });
-  }
-  if(addDayItem){
-    addDayItem.addEventListener('click',()=>{
-      ensureDefaultDaySnapshot();
-      const fallback=state.day.items.length?state.day.items[state.day.items.length-1].time:'08:00';
-      state.day.items.push({time:normalizeTimeString(fallback,'08:00'),label:''});
-      sortDayItemsInPlace(state.day.items);
-      state.day.dirty=true;
-      render();
-    });
-  }
-  if(yourDaySave){
-    yourDaySave.addEventListener('click',()=>{
-      ensureDefaultDaySnapshot();
-      const name=(yourDayName?.value||'').trim();
-      if(!name){
-        showToast('Enter a schedule name before saving.','error');
-        return;
-      }
-      const id=slugifyScheduleName(name);
-      if(!id){
-        showToast('Unable to save schedule.','error');
-        return;
-      }
-      sortDayItemsInPlace(state.day.items);
-      const previousId=state.day.scheduleId;
-      const existed=Boolean(state.savedSchedules[id]);
-      state.savedSchedules[id]={id,name,items:cloneDayItems(state.day.items)};
-      if(previousId&&previousId!==id&&previousId!==DEFAULT_SCHEDULE_ID){
-        delete state.savedSchedules[previousId];
-      }
-      state.day.scheduleId=id;
-      state.day.dirty=false;
-      persistSchedules();
-      render();
-      showToast(existed?'Schedule updated.':'Schedule saved.','success');
-    });
-  }
-  if(yourDayRemove){
-    yourDayRemove.addEventListener('click',()=>{
-      const currentId=state.day.scheduleId;
-      if(currentId===DEFAULT_SCHEDULE_ID) return;
-      if(state.savedSchedules[currentId]){
-        delete state.savedSchedules[currentId];
-        persistSchedules();
-      }
-      state.day.scheduleId=DEFAULT_SCHEDULE_ID;
-      state.day.dirty=false;
-      render();
-      showToast('Schedule removed.','info');
-    });
-  }
-  if(yourDayReset){
-    yourDayReset.addEventListener('click',()=>{
-      state.day.scheduleId=DEFAULT_SCHEDULE_ID;
-      state.day.dirty=false;
-      render();
-      showToast('Reverted to default schedule.','info');
-    });
-  }
-  if(yourDaySelect){
-    yourDaySelect.addEventListener('change',()=>{
-      const selected=yourDaySelect.value;
-      const ok=loadScheduleById(selected);
-      if(!ok){
-        showToast('Schedule not found.','error');
-        render();
-        return;
-      }
-      render();
-      showToast(selected===DEFAULT_SCHEDULE_ID?'Default schedule loaded.':'Schedule loaded.','success');
-    });
-  }
-  if(wakeInput) wakeInput.addEventListener('input',e=>{state.wake=e.target.value;state.startDate=todayAsYYYYMMDD();render()});
-  if(wakeDuration) wakeDuration.addEventListener('input',e=>{state.wakeDuration=clamp(Number(e.target.value),720,1200);state.startDate=todayAsYYYYMMDD();render()});
-  if(toggleFormat) toggleFormat.addEventListener('click',()=>{state.show12h=!state.show12h;render()});
-  if(targetDate) targetDate.addEventListener('input',e=>{state.targetDate=e.target.value;state.startDate=todayAsYYYYMMDD();render()});
-  if(plannerMode) plannerMode.addEventListener('change',e=>{state.plannerMode=e.target.value;if(plannerModeLabel) plannerModeLabel.textContent=state.plannerMode;state.startDate=todayAsYYYYMMDD();render()});
-  if(timeZone) timeZone.addEventListener('change',e=>{state.timeZone=e.target.value;state.startDate=todayAsYYYYMMDD();render()});
-  if(targetTime) targetTime.addEventListener('input',e=>{state.targetTime=e.target.value;state.startDate=todayAsYYYYMMDD();render()});
-  if(dailyStep) dailyStep.addEventListener('input',e=>{state.dailyStep=clamp(Number(e.target.value),5,240);dailyStepLabel.textContent=String(state.dailyStep);state.startDate=todayAsYYYYMMDD();render()});
-  dirButtons.forEach(btn=>{
-    btn.setAttribute('aria-pressed','false');
-    btn.setAttribute('type','button');
-    btn.addEventListener('click',()=>{
-      const value=btn.getAttribute('data-dir');
-      if(!value) return;
-      state.direction=value;
-      state.startDate=todayAsYYYYMMDD();
-      render();
-    });
-  });
-
-  if(saveBtn){
-    saveBtn.addEventListener('click',()=>{
-      const result=save();
-      if(result?.ok!==false){
-        showToast('Saved','success');
-      } else {
-        showToast(`Save failed: ${result?.error||'storage error'}`,'error');
-      }
-    });
-  }
-  if(loadBtn){
-    loadBtn.addEventListener('click',()=>{
-      try{
-        const raw=localStorage.getItem(TRANSFER_KEY)||localStorage.getItem(STORAGE_KEY);
-        if(!raw){
-          showToast('No saved plan found in this browser.','error');
-          return;
-        }
-        let data;
-        try{data=JSON.parse(raw);}catch(err){
-          showToast('Saved plan is corrupted: '+(err?.message||'Parse error'),'error');
-          return;
-        }
-        const result=applyImportedPlan(data);
-        if(result.ok){
-          render();
-          maybeShowWakeReminder();
-          showToast('Loaded','success');
-        } else {
-          showToast(result.message||'Load failed.','error');
-        }
-      }catch(err){
-        showToast('Unable to access browser storage: '+(err?.message||'storage error'),'error');
-      }
-    });
-  }
-  if(shareBtn){
-    shareBtn.addEventListener('click',async()=>{
-      const data=buildSaveObject(state.startDate);
-      const shareCode=encodePlanToShareText(data);
-      let linkText=shareCode;
-      if(typeof window!=='undefined'&&window.location){
-        try{
-          const url=new URL(window.location.href);
-          url.searchParams.set('plan',shareCode);
-          linkText=url.toString();
-        }catch(err){
-          const origin=window.location.origin||'';
-          const path=window.location.pathname||'';
-          linkText=`${origin}${path}?plan=${encodeURIComponent(shareCode)}`;
-        }
-      }
-      const shareData={title:'NightOwl plan',url:linkText};
-      if(typeof navigator!=='undefined'&&navigator.share){
-        try{
-          if(!navigator.canShare||navigator.canShare(shareData)){
-            await navigator.share(shareData);
-            return;
+        li.addEventListener('dragstart', (event) => {
+          event.dataTransfer.setData('text/plain', evt.id);
+          event.dataTransfer.effectAllowed = 'move';
+          li.classList.add('dragging');
+        });
+        li.addEventListener('dragend', () => li.classList.remove('dragging'));
+        li.addEventListener('dragover', (event) => {
+          event.preventDefault();
+          const draggingId = event.dataTransfer.getData('text/plain');
+          if (!draggingId || draggingId === evt.id) return;
+          const draggingIndex = state.events.findIndex((e) => e.id === draggingId);
+          const targetIndex = state.events.findIndex((e) => e.id === evt.id);
+          if (draggingIndex === -1 || targetIndex === -1) return;
+          if (draggingIndex < targetIndex) {
+            state.events.splice(targetIndex + 1, 0, state.events.splice(draggingIndex, 1)[0]);
+          } else {
+            state.events.splice(targetIndex, 0, state.events.splice(draggingIndex, 1)[0]);
           }
-        }catch(err){
-          if(err?.name==='AbortError') return;
-          showToast('Unable to open share sheet. Copy the link manually.','error');
-        }
-      }
-      openShareDialog(linkText,shareCode);
-    });
-  }
-  if(applyOverride){
-    applyOverride.addEventListener('click',()=>{
-      if(!overrideInput) return;
-      applyOverrideValue(overrideInput.value);
-    });
-  }
-  if(clearOverride){
-    clearOverride.addEventListener('click',()=>{
-      if(overrideInput) overrideInput.value='';
-      applyOverrideValue('');
-    });
+          persistState();
+          render();
+        });
+
+        dayList.appendChild(li);
+      });
   }
 
-  if(shareLayer){
-    shareLayer.addEventListener('click',e=>{
-      const target=e.target;
-      if(typeof Element!=='undefined'&&target instanceof Element&&target.hasAttribute('data-share-close')){
-        closeShareDialog();
+  function openTimeEditor(li, evt) {
+    if (li.querySelector('.time-editor')) return;
+    const editor = document.createElement('div');
+    editor.className = 'time-editor';
+    const startInput = document.createElement('input');
+    startInput.type = 'time';
+    startInput.value = minutesToTime(evt.startMin);
+    const endInput = document.createElement('input');
+    endInput.type = 'time';
+    endInput.value = minutesToTime(evt.endMin);
+    const saveBtn = document.createElement('button');
+    saveBtn.className = 'btn btn-primary';
+    saveBtn.type = 'button';
+    saveBtn.textContent = 'Done';
+    saveBtn.addEventListener('click', () => {
+      const start = toMinutes(startInput.value);
+      const end = toMinutes(endInput.value);
+      if (minutesDiff(start, end) < MIN_EVENT_DURATION) {
+        showToast('Event must be at least 10 minutes long', 'error');
+        return;
       }
+      evt.startMin = start;
+      evt.endMin = end;
+      persistState();
+      render();
     });
+    editor.appendChild(startInput);
+    editor.appendChild(endInput);
+    editor.appendChild(saveBtn);
+    li.appendChild(editor);
   }
-  if(shareCopyLink){
-    shareCopyLink.addEventListener('click',async()=>{
-      const text=shareLinkInput?.value||'';
-      const ok=await copyTextToClipboard(text);
-      if(ok){
-        showToast('Link copied to clipboard.','success');
-      }else{
-        showToast('Unable to copy link. Please copy manually.','error');
-      }
-    });
-  }
-  if(shareCopyCode){
-    shareCopyCode.addEventListener('click',async()=>{
-      const text=shareCodeEl?.textContent||'';
-      const ok=await copyTextToClipboard(text);
-      if(ok){
-        showToast('Code copied to clipboard.','success');
-      }else{
-        showToast('Unable to copy code. Please copy manually.','error');
-      }
-    });
-  }
-  document.addEventListener('keydown',e=>{
-    if(e.key==='Escape'&&isShareOpen()){
-      e.preventDefault();
-      closeShareDialog();
-    }
-  });
 
-  // clock tick
-  setInterval(()=>render(),30000);
-
-  // init
-  (function init(){
-    // defaults
-    loadPreferences();
-    loadSchedules();
-    applyTextScale();
-    applyTheme(state.theme);
-    updateScheduleSelect();
-    wakeInput.value=state.wake; wakeDuration.value=String(state.wakeDuration);
-    targetDate.value=state.targetDate; plannerMode.value=state.plannerMode; timeZone.value=state.timeZone; targetTime.value=state.targetTime; dailyStep.value=String(state.dailyStep);
-    try{
-      const stored=localStorage.getItem(OVERRIDE_KEY);
-      if(stored){
-        const parsed=new Date(stored);
-        if(!Number.isNaN(parsed.getTime())){
-          overrideNowDate=parsed;
-        }
-      }
-    }catch{}
-    updateOverrideUI();
-    load();
-    loadSharedPlanFromURL();
+  function addEventFromTemplate(template, startMinutes) {
+    const eventStart = typeof startMinutes === 'number' ? startMinutes : guessOpenMinute();
+    const event = createEvent(template.type, template.title, eventStart, (eventStart + template.duration) % MINUTES_IN_DAY);
+    state.events.push(event);
+    state.selectedId = event.id;
+    persistState();
     render();
-    maybeShowWakeReminder();
-  })();
+    showToast(`${template.title} added`, 'success');
+  }
+
+  function removeEvent(id) {
+    state.events = state.events.filter((evt) => evt.id !== id);
+    if (state.selectedId === id) state.selectedId = null;
+    persistState();
+    render();
+  }
+
+  function guessOpenMinute() {
+    if (!state.events.length) return toMinutes('09:00');
+    const sorted = state.events.slice().sort((a, b) => a.startMin - b.startMin);
+    return (sorted[sorted.length - 1].endMin + 30) % MINUTES_IN_DAY;
+  }
+
+  function renderNextEventLabel() {
+    if (!nextEventLabel) return;
+    const nowMinutes = minutesInZone(getNow(), state.timeZone);
+    const upcoming = state.events
+      .map((evt) => ({ ...evt, minutesUntil: ((evt.startMin - nowMinutes + MINUTES_IN_DAY) % MINUTES_IN_DAY) }))
+      .sort((a, b) => a.minutesUntil - b.minutesUntil)[0];
+    if (!upcoming) {
+      nextEventLabel.hidden = true;
+      return;
+    }
+    nextEventLabel.hidden = false;
+    nextEventLabel.textContent = `${upcoming.title} in ${formatDuration(upcoming.minutesUntil)}`;
+    positionLabelForEvent(upcoming, nextEventLabel);
+  }
+
+  function positionLabelForEvent(evt, element) {
+    const rect = dayRing.getBoundingClientRect();
+    const overlayRect = element.offsetParent?.getBoundingClientRect() || rect;
+    const centerX = rect.left + rect.width / 2;
+    const centerY = rect.top + rect.height / 2;
+    const angle = ((evt.startMin / MINUTES_IN_DAY) * 360) - 90;
+    const radius = rect.width / 2 * 0.85;
+    const x = centerX + Math.cos((angle * Math.PI) / 180) * radius - overlayRect.left;
+    const y = centerY + Math.sin((angle * Math.PI) / 180) * radius - overlayRect.top;
+    element.style.left = `${x}px`;
+    element.style.top = `${y}px`;
+  }
+
+  function showToast(message, variant = 'info', duration = 2600) {
+    if (!toastContainer) return;
+    const toast = document.createElement('div');
+    toast.className = `toast toast-${variant}`;
+    toast.textContent = message;
+    toastContainer.appendChild(toast);
+    requestAnimationFrame(() => toast.classList.add('toast-visible'));
+    setTimeout(() => {
+      toast.classList.remove('toast-visible');
+      setTimeout(() => toast.remove(), 180);
+    }, duration);
+  }
+
+  function populateTimeZoneSelect() {
+    const tzs = Object.keys(timezoneLocations);
+    tzs.forEach((tz) => {
+      const option = document.createElement('option');
+      option.value = tz;
+      option.textContent = timezoneLocations[tz].label;
+      timeZoneSelect.appendChild(option);
+    });
+  }
+
+  function calculateSunTimes(timeZone) {
+    const loc = timezoneLocations[timeZone] || timezoneLocations.local;
+    const now = getNow();
+    const date = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const sun = solarSunriseSunset(date, loc.lat, loc.lon);
+    if (!sun) return { sunrise: null, sunset: null };
+    return sun;
+  }
+
+  function solarSunriseSunset(date, latitude, longitude) {
+    const rad = Math.PI / 180;
+    const J1970 = 2440588;
+    const J2000 = 2451545;
+    const dayMs = 1000 * 60 * 60 * 24;
+    const lw = -longitude * rad;
+    const phi = latitude * rad;
+    const toJulian = (date) => date.valueOf() / dayMs - 0.5 + J1970;
+    const fromJulian = (j) => new Date((j + 0.5 - J1970) * dayMs);
+    const solarMeanAnomaly = (d) => rad * (357.5291 + 0.98560028 * d);
+    const eclipticLongitude = (M) => {
+      const C = rad * (1.9148 * Math.sin(M) + 0.02 * Math.sin(2 * M) + 0.0003 * Math.sin(3 * M));
+      const P = rad * 102.9372;
+      return M + C + P + Math.PI;
+    };
+    const sunDeclination = (L) => Math.asin(Math.sin(L) * Math.sin(rad * 23.44));
+    const hourAngle = (h, phi, d) => Math.acos((Math.sin(h) - Math.sin(phi) * Math.sin(d)) / (Math.cos(phi) * Math.cos(d)));
+    const approxTransit = (ds, M, L) => J2000 + ds + 0.0053 * Math.sin(M) - 0.0069 * Math.sin(2 * L);
+
+    const d = toJulian(date) - J2000;
+    const J0 = 0.0009;
+    const n = Math.round(d - J0 - lw / (2 * Math.PI));
+    const ds = n + J0 + lw / (2 * Math.PI);
+    const M = solarMeanAnomaly(ds);
+    const L = eclipticLongitude(M);
+    const dec = sunDeclination(L);
+    const h0 = -0.83 * rad;
+    const w = hourAngle(h0, phi, dec);
+    let Jrise = approxTransit(ds, M, L) - w / (2 * Math.PI);
+    let Jset = approxTransit(ds, M, L) + w / (2 * Math.PI);
+    if (Number.isNaN(Jrise) || Number.isNaN(Jset)) return null;
+    // Ensure rise < set
+    if (Jset < Jrise) Jset += 1;
+    const sunriseDate = fromJulian(Jrise);
+    const sunsetDate = fromJulian(Jset);
+    const sunrise = minutesInZone(sunriseDate, state.timeZone);
+    const sunset = minutesInZone(sunsetDate, state.timeZone);
+    if (Number.isNaN(sunrise) || Number.isNaN(sunset)) return null;
+    return { sunrise, sunset };
+  }
+
+  function renderNudgePlan() {
+    const sleepEvent = state.events.find((evt) => evt.type === 'sleep');
+    if (!sleepEvent) {
+      nudgeCardsEl.innerHTML = '<p class="text-muted">Add a sleep block to enable nudges.</p>';
+      state.ghostPlan = [];
+      return;
+    }
+    const currentStart = sleepEvent.startMin;
+    const currentEnd = sleepEvent.endMin;
+    const reference = state.plannerMode === 'wake' ? currentEnd : currentStart;
+    const targetMinutes = toMinutes(state.targetTime);
+    let diff = ((targetMinutes - reference + MINUTES_IN_DAY) % MINUTES_IN_DAY + MINUTES_IN_DAY) % MINUTES_IN_DAY;
+    if (diff > MINUTES_IN_DAY / 2) diff -= MINUTES_IN_DAY;
+    if (state.plannerDirection === 'earlier' && diff > 0) diff -= MINUTES_IN_DAY;
+    if (state.plannerDirection === 'later' && diff < 0) diff += MINUTES_IN_DAY;
+    const step = clamp(Number(state.dailyStep) || 30, 5, 120);
+    const daysNeeded = Math.max(1, Math.ceil(Math.abs(diff) / step));
+    const perDay = clamp(Math.round(diff / daysNeeded), -step, step);
+    const plan = [];
+    let running = reference;
+    const baseDate = new Date(state.targetDate || todayISO());
+    for (let i = 0; i < daysNeeded; i++) {
+      running = (running + perDay + MINUTES_IN_DAY) % MINUTES_IN_DAY;
+      const dayDate = new Date(baseDate);
+      dayDate.setDate(baseDate.getDate() + i);
+      const label = dayDate.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
+      const wake = state.plannerMode === 'wake' ? running : (running + minutesDiff(currentStart, currentEnd)) % MINUTES_IN_DAY;
+      const sleep = state.plannerMode === 'wake' ? (running - minutesDiff(currentStart, currentEnd) + MINUTES_IN_DAY) % MINUTES_IN_DAY : running;
+      plan.push({ label, wake, sleep });
+    }
+    state.ghostPlan = plan;
+    state.ghostDelta = diff;
+    nudgeCardsEl.innerHTML = '';
+    plan.forEach((entry) => {
+      const card = document.createElement('div');
+      card.className = 'nudge-card';
+      const label = document.createElement('div');
+      label.className = 'nudge-card__label';
+      label.innerHTML = `<strong>${entry.label}</strong><span class="text-muted">Wake ${minutesToLabel(entry.wake)} · Sleep ${minutesToLabel(entry.sleep)}</span>`;
+      const mini = createMiniRing(entry);
+      card.appendChild(label);
+      card.appendChild(mini);
+      nudgeCardsEl.appendChild(card);
+    });
+    updateGhostButtonState();
+  }
+
+  function createMiniRing(entry) {
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.setAttribute('viewBox', '0 0 100 100');
+    svg.setAttribute('class', 'nudge-card__mini');
+    const center = 50;
+    const radius = 32;
+    const background = createSVG('circle', { cx: center, cy: center, r: radius, class: 'clock-backdrop' });
+    svg.appendChild(background);
+    const segments = splitEvent(entry.sleep, entry.wake);
+    segments.forEach(([start, end]) => {
+      const path = describeArc(
+        center,
+        center,
+        radius,
+        angleFromMinutes(start),
+        angleFromMinutes(end < start ? end + MINUTES_IN_DAY : end)
+      );
+      const arc = createSVG('path', { d: path, class: 'arc-path', stroke: getEventColor('sleep') });
+      svg.appendChild(arc);
+    });
+    return svg;
+  }
+
+  function updateGhostButtonState() {
+    if (!toggleGhostBtn) return;
+    toggleGhostBtn.classList.toggle('btn-primary', state.ghostVisible);
+    toggleGhostBtn.classList.toggle('btn-secondary', !state.ghostVisible);
+    toggleGhostBtn.textContent = state.ghostVisible ? 'Hide nudge overlay' : 'Nudge overlay';
+  }
+
+  function toggleGhostOverlay() {
+    if (!state.ghostPlan.length) {
+      showToast('Nothing to overlay yet — adjust the nudge inputs first.', 'info');
+      return;
+    }
+    state.ghostVisible = !state.ghostVisible;
+    updateGhostButtonState();
+    render();
+  }
+
+  function applyGhostToPlan() {
+    if (!state.ghostVisible || !state.ghostPlan.length) {
+      showToast('Generate a nudge overlay first', 'info');
+      return;
+    }
+    state.events = state.events.map((evt) => shiftEvent(evt, state.ghostDelta));
+    state.ghostVisible = false;
+    persistState();
+    render();
+    showToast('Nudge applied to your day', 'success');
+  }
+
+  function setPlannerDirection(dir) {
+    state.plannerDirection = dir;
+    segmentBtns.forEach((btn) => btn.setAttribute('aria-checked', btn.dataset.dir === dir ? 'true' : 'false'));
+    persistState();
+    renderNudgePlan();
+  }
+
+  function updatePlannerMode(mode) {
+    state.plannerMode = mode;
+    plannerModeSelect.value = mode;
+    plannerModeLabel.textContent = mode === 'wake' ? 'wake' : 'sleep';
+    persistState();
+    renderNudgePlan();
+  }
+
+  function updateDailyStep(value) {
+    state.dailyStep = clamp(Number(value) || 30, 5, 120);
+    dailyStepRange.value = state.dailyStep;
+    dailyStepLabel.textContent = `±${state.dailyStep} min`;
+    persistState();
+    renderNudgePlan();
+  }
+
+  function updateTargetTime(value) {
+    if (!value) return;
+    state.targetTime = value;
+    persistState();
+    renderNudgePlan();
+  }
+
+  function updateTargetDate(value) {
+    state.targetDate = value || todayISO();
+    persistState();
+    renderNudgePlan();
+  }
+
+  function setFilter(filter) {
+    state.activeFilter = filter;
+    filterChips.forEach((chip) => chip.classList.toggle('chip-active', chip.dataset.filter === filter));
+    render();
+  }
+
+  function enableClockPicker(enable) {
+    state.addViaClock = enable;
+    addViaClockBtn.classList.toggle('btn-primary', enable);
+    addViaClockBtn.classList.toggle('btn-secondary', !enable);
+    if (enable) {
+      ringTooltip.hidden = false;
+      ringTooltip.textContent = 'Drag to set a time block';
+    } else {
+      ringTooltip.hidden = true;
+    }
+  }
+
+  function handleRingPointerDown(evt) {
+    if (evt.target.closest('.arc-path') || evt.target.closest('.arc-handle')) return;
+    const minutes = snapMinutes(getMinutesFromPointer(evt), getSnapStep(evt));
+    if (!state.addViaClock) {
+      state.selectedId = null;
+      render();
+      return;
+    }
+    const template = quickAddTemplates[0];
+    addEventFromTemplate(template, minutes);
+    enableClockPicker(false);
+  }
+
+  function initQuickAddMenu() {
+    if (!addDayItemBtn) return;
+    const menu = document.createElement('div');
+    menu.className = 'quick-add-menu';
+    menu.style.display = 'none';
+    quickAddTemplates.forEach((template) => {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'btn btn-secondary';
+      btn.textContent = `${eventTypes[template.type]?.icon || '⭐'} ${template.title}`;
+      btn.addEventListener('click', () => {
+        menu.style.display = 'none';
+        addEventFromTemplate(template);
+      });
+      menu.appendChild(btn);
+    });
+    addDayItemBtn.insertAdjacentElement('afterend', menu);
+    addDayItemBtn.addEventListener('click', () => {
+      menu.style.display = menu.style.display === 'none' ? 'grid' : 'none';
+    });
+  }
+
+  function updateOverrideUI() {
+    if (state.overrideNow) {
+      overrideStatus.textContent = `Overriding now: ${new Date(state.overrideNow).toLocaleString()}`;
+      overrideInput.value = state.overrideNow.slice(0, 16);
+    } else {
+      overrideStatus.textContent = 'Using real current time.';
+      overrideInput.value = '';
+    }
+  }
+
+  function applyOverride() {
+    const value = overrideInput.value;
+    if (!value) return;
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) {
+      showToast('Invalid override date', 'error');
+      return;
+    }
+    state.overrideNow = parsed.toISOString();
+    persistState();
+    updateOverrideUI();
+    render();
+    showToast('Override applied', 'success');
+  }
+
+  function clearOverride() {
+    state.overrideNow = null;
+    persistState();
+    updateOverrideUI();
+    render();
+    showToast('Override cleared', 'info');
+  }
+
+  function initAdvancedAccordion() {
+    advancedToggle.addEventListener('click', () => {
+      const expanded = advancedToggle.getAttribute('aria-expanded') === 'true';
+      advancedToggle.setAttribute('aria-expanded', expanded ? 'false' : 'true');
+      advancedBody.hidden = expanded;
+    });
+  }
+
+  function initRingInteraction() {
+    dayRing.addEventListener('pointerdown', handleRingPointerDown);
+  }
+
+  function initFilterChips() {
+    filterChips.forEach((chip) => chip.addEventListener('click', () => setFilter(chip.dataset.filter)));
+  }
+
+  function initSegmentControl() {
+    segmentBtns.forEach((btn) => btn.addEventListener('click', () => setPlannerDirection(btn.dataset.dir)));
+  }
+
+  function initThemeButtons() {
+    themeButtons.forEach((btn) => {
+      btn.addEventListener('click', () => applyTheme(btn.getAttribute('data-theme-choice')));
+    });
+  }
+
+  function initTextScaling() {
+    if (textScaleDown) textScaleDown.addEventListener('click', () => applyTextScale(state.textScale - TEXT_SCALE_STEP));
+    if (textScaleUp) textScaleUp.addEventListener('click', () => applyTextScale(state.textScale + TEXT_SCALE_STEP));
+    applyTextScale(state.textScale);
+  }
+
+  function initPlannerControls() {
+    if (plannerModeSelect) plannerModeSelect.addEventListener('change', (evt) => updatePlannerMode(evt.target.value));
+    if (targetTimeInput) targetTimeInput.addEventListener('change', (evt) => updateTargetTime(evt.target.value));
+    if (targetDateInput) targetDateInput.addEventListener('change', (evt) => updateTargetDate(evt.target.value));
+    if (dailyStepRange) dailyStepRange.addEventListener('input', (evt) => updateDailyStep(evt.target.value));
+    toggleGhostBtn.addEventListener('click', toggleGhostOverlay);
+    applyPlanBtn.addEventListener('click', applyGhostToPlan);
+    plannerModeSelect.value = state.plannerMode;
+    targetTimeInput.value = state.targetTime;
+    targetDateInput.value = state.targetDate;
+    dailyStepRange.value = state.dailyStep;
+    dailyStepLabel.textContent = `±${state.dailyStep} min`;
+    plannerModeLabel.textContent = state.plannerMode === 'wake' ? 'wake' : 'sleep';
+    segmentBtns.forEach((btn) => btn.setAttribute('aria-checked', btn.dataset.dir === state.plannerDirection ? 'true' : 'false'));
+  }
+
+  function initTimezoneControls() {
+    populateTimeZoneSelect();
+    setTimezone(state.timeZone);
+    timeZoneSelect.addEventListener('change', (evt) => setTimezone(evt.target.value));
+    timezoneToggle.addEventListener('click', () => {
+      timeZoneSelect.focus();
+      const options = Array.from(timeZoneSelect.options);
+      const current = options.findIndex((opt) => opt.value === state.timeZone);
+      const next = (current + 1) % options.length;
+      setTimezone(options[next].value);
+    });
+  }
+
+  function initClockPicker() {
+    addViaClockBtn.addEventListener('click', () => enableClockPicker(!state.addViaClock));
+  }
+
+  function initOverrideControls() {
+    applyOverrideBtn.addEventListener('click', applyOverride);
+    clearOverrideBtn.addEventListener('click', clearOverride);
+    updateOverrideUI();
+  }
+
+  function init() {
+    loadState();
+    applyTheme(state.theme);
+    initTextScaling();
+    initThemeButtons();
+    initTimezoneControls();
+    initPlannerControls();
+    initFilterChips();
+    initSegmentControl();
+    initRingInteraction();
+    initClockPicker();
+    initQuickAddMenu();
+    initAdvancedAccordion();
+    initOverrideControls();
+    render();
+    setInterval(() => {
+      renderClock();
+      renderNextEventLabel();
+    }, 60000);
+  }
+
+  document.addEventListener('DOMContentLoaded', init);
 })();

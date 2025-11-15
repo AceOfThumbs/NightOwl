@@ -4,272 +4,159 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>NightOwl — Static</title>
+    <title>NightOwl — UI rethink</title>
     <link rel="stylesheet" href="nightowl.css" />
   </head>
   <body>
-    <div class="container">
-      <header class="header">
-        <div>
+    <div class="app-shell">
+      <header class="app-header">
+        <div class="app-title">
           <h1>NightOwl</h1>
-          <p class="muted">Shift-aware clock and circadian planner</p>
+          <p class="text-muted">Shift-aware clock and circadian planner</p>
         </div>
-        <div class="header-controls" role="group" aria-label="Display controls">
-          <div class="control-group" role="group" aria-label="Text size">
-            <span class="control-icon" aria-hidden="true">Aa</span>
-            <button id="textScaleDown" class="btn btn-icon" type="button" aria-label="Decrease text size">−</button>
-            <button id="textScaleUp" class="btn btn-icon" type="button" aria-label="Increase text size">+</button>
+        <div class="header-actions">
+          <div class="pill-group" role="group" aria-label="Locale display">
+            <button id="timezoneToggle" class="pill" type="button"></button>
           </div>
-          <div class="control-group" role="group" aria-label="Color mode">
-            <button
-              id="themeLight"
-              class="btn btn-icon"
-              type="button"
-              data-theme-choice="light"
-              aria-pressed="false"
-              aria-label="Switch to light mode"
-            >☀️</button>
-            <button
-              id="themeDark"
-              class="btn btn-icon"
-              type="button"
-              data-theme-choice="dark"
-              aria-pressed="false"
-              aria-label="Switch to dark mode"
-            >🌙</button>
+          <div class="control-stack" role="group" aria-label="Interface controls">
+            <button id="textScaleDown" class="btn btn-ghost" type="button" aria-label="Decrease text size">Aa−</button>
+            <button id="textScaleUp" class="btn btn-ghost" type="button" aria-label="Increase text size">Aa+</button>
+            <button id="themeLight" class="btn btn-ghost" type="button" data-theme-choice="light" aria-pressed="false" aria-label="Switch to light mode">☀️</button>
+            <button id="themeDark" class="btn btn-ghost" type="button" data-theme-choice="dark" aria-pressed="false" aria-label="Switch to dark mode">🌙</button>
           </div>
-        </div>
-        <div id="kofi-slot">
-          <a
-            href="https://ko-fi.com/G2G2I3KYW"
-            target="_blank"
-            rel="noopener noreferrer"
-            aria-label="Support me on Ko-fi"
-          >
-            <img
-              src="https://storage.ko-fi.com/cdn/kofi6.png?v=6"
-              alt="Support me on Ko-fi"
-              height="36"
-              style="border: 0; height: 36px"
-            />
-          </a>
         </div>
       </header>
 
-      <main class="grid">
-        <!-- LEFT: Clock + Wake & Sleep + Your Day -->
-        <section class="col col-2">
-          <div class="card">
-            <div class="card-head"><h2>Clock</h2></div>
-            <div class="clock-grid">
-              <div class="clock-box">
-                <svg id="analogClock" viewBox="0 0 200 200" class="clock-svg" aria-label="analog clock"></svg>
-              </div>
-              <div class="clock-meta">
-                <div class="label">Feels Like</div>
-                <div class="clock-meta__display">
-                  <div id="feelsLike" class="big"></div>
-                  <div id="clockDate" class="clock-date"></div>
-                </div>
-                <div class="sub">Time zone: <strong>Local</strong></div>
-                <div class="row">
-                  <span class="label">Display</span>
-                  <button id="toggleFormat" class="btn">12-hour</button>
-                </div>
+      <main class="layout">
+        <section class="panel panel-clock" aria-labelledby="clockTitle">
+          <header class="panel-head">
+            <h2 id="clockTitle">Clock</h2>
+            <div class="clock-meta" aria-live="polite">
+              <span class="clock-meta__now" id="nowLabel"></span>
+              <span class="clock-meta__feels" id="feelsLikeLabel"></span>
+            </div>
+          </header>
+          <div class="clock-stage">
+            <div class="day-ring" role="application" aria-label="24-hour planner clock">
+              <svg id="dayRing" viewBox="0 0 400 400" aria-hidden="true"></svg>
+              <div class="ring-overlay">
+                <div class="next-event" id="nextEventLabel" hidden></div>
+                <div class="ring-tooltip" id="ringTooltip" hidden></div>
               </div>
             </div>
-          </div>
-
-          <div class="card">
-            <div class="card-head"><h2>Wake & Sleep Window</h2></div>
-            <div class="field">
-              <label>Wake time</label>
-              <input id="wakeInput" type="time" />
+            <div class="micro-legend" aria-label="Legend">
+              <span><span class="legend-dot legend-day"></span>☀️ day</span>
+              <span><span class="legend-dot legend-night"></span>🌙 sleep</span>
+              <span><span class="legend-dot legend-meal"></span>🍽️ meals</span>
+              <span><span class="legend-dot legend-move"></span>🧘‍♀️ exercise</span>
+              <span><span class="legend-dot legend-work"></span>💼 work</span>
             </div>
-            <div class="info">Sleep from <span id="sleepFrom" class="strong"></span> to <span id="sleepTo" class="strong"></span> (<span id="sleepHours"></span>h)</div>
-            <div class="row gap">
-              <span class="sun" aria-hidden>☀️</span>
-              <input id="wakeDuration" type="range" min="720" max="1200" step="15" />
-              <span class="moon" aria-hidden>🌙</span>
-            </div>
-            <div class="sub">(Sleep = 24h − wake = <span id="sleepHours2"></span>h)</div>
-          </div>
-
-          <div class="card">
-            <div class="card-head"><h2>Your Day</h2></div>
-            <div class="yourday-panel">
-              <p class="sub">Adjust your day, then save or load a schedule.</p>
-              <div class="field">
-                <label class="label" for="yourDaySelect">Saved schedules</label>
-                <div class="row wrap">
-                  <select id="yourDaySelect"></select>
-                  <button id="yourDayRemove" class="btn" type="button">Remove</button>
-                  <button id="yourDayReset" class="btn" type="button">Reset</button>
-                </div>
-              </div>
-              <div id="yourDayList" class="yourday-list" aria-live="polite"></div>
-              <button id="addDayItem" class="btn" type="button">Add item</button>
-              <div class="field">
-                <label class="label" for="yourDayName">Save current as</label>
-                <div class="row wrap">
-                  <input id="yourDayName" type="text" placeholder="e.g. Night shift" />
-                  <button id="yourDaySave" class="btn primary" type="button">Save</button>
-                </div>
-              </div>
+            <div class="filter-chips" role="group" aria-label="Filter event types">
+              <button class="chip chip-active" data-filter="all">All</button>
+              <button class="chip" data-filter="sleep">Sleep</button>
+              <button class="chip" data-filter="meal">Meals</button>
+              <button class="chip" data-filter="exercise">Exercise</button>
+              <button class="chip" data-filter="work">Work</button>
+              <button class="chip" data-filter="light">Light blocks</button>
             </div>
           </div>
         </section>
 
-        <!-- RIGHT: Planner -->
-        <section class="col">
-          <div class="card fullheight">
-            <div class="card-head"><h2>Nudge Planner</h2></div>
+        <section class="panel panel-day" aria-labelledby="dayListTitle">
+          <header class="panel-head">
+            <h2 id="dayListTitle">Your Day</h2>
+            <p class="text-muted">Plan anchors for your day. Add items or drag them on the clock.</p>
+          </header>
+          <div class="list-controls">
+            <button id="addViaClock" class="btn btn-secondary" type="button">Pick on clock</button>
+            <button id="addDayItem" class="btn btn-primary" type="button">Add item</button>
+          </div>
+          <ul id="dayList" class="day-list" aria-live="polite"></ul>
+        </section>
 
-            <div class="grid2">
-              <div class="field">
-                <label>Target date</label>
-                <input id="targetDate" type="date" />
-              </div>
-              <div class="field">
-                <label>Plan for</label>
-                <select id="plannerMode">
-                  <option value="wake">Wake time</option>
-                  <option value="sleep">Sleep time</option>
-                </select>
-              </div>
+        <section class="panel panel-nudge" aria-labelledby="nudgeTitle">
+          <header class="panel-head">
+            <h2 id="nudgeTitle">Nudge Planner</h2>
+            <div class="segment" role="radiogroup" aria-label="Nudge direction">
+              <button class="segment-btn" data-dir="auto" role="radio" aria-checked="true">Auto</button>
+              <button class="segment-btn" data-dir="earlier" role="radio" aria-checked="false">Earlier</button>
+              <button class="segment-btn" data-dir="later" role="radio" aria-checked="false">Later</button>
             </div>
-
-            <div class="grid2">
-              <div class="field">
-                <label>Time zone</label>
-                <select id="timeZone">
-                  <option value="local">Local</option>
-                  <option value="UTC">UTC</option>
-                  <option value="America/Los_Angeles">America/Los_Angeles</option>
-                  <option value="America/Denver">America/Denver</option>
-                  <option value="America/Chicago">America/Chicago</option>
-                  <option value="America/New_York">America/New_York</option>
-                  <option value="Europe/London">Europe/London</option>
-                  <option value="Europe/Paris">Europe/Paris</option>
-                  <option value="Asia/Tokyo">Asia/Tokyo</option>
-                  <option value="Australia/Sydney">Australia/Sydney</option>
-                </select>
-              </div>
-              <div class="field">
-                <label>Target <span id="plannerModeLabel">wake</span> time</label>
-                <input id="targetTime" type="time" />
-              </div>
-            </div>
-
-            <div class="grid2">
-              <div class="field">
-                <label>Max nudge per day (<span id="dailyStepLabel">30</span> min)</label>
-                <input id="dailyStep" type="range" min="5" max="240" step="5" />
-              </div>
-            </div>
-
-            <div class="field">
-              <label>Direction strategy</label>
-              <div class="row">
-                <button class="btn" data-dir="auto">auto</button>
-                <button class="btn" data-dir="earlier">earlier</button>
-                <button class="btn" data-dir="later">later</button>
-              </div>
-            </div>
-
-            <div class="planner-actions">
-              <div>
-                <div class="label">Suggested schedule</div>
-                <div class="sub">(local time)</div>
-              </div>
-              <div class="row planner-actions__buttons">
-                <button id="saveBtn" class="btn">Save</button>
-                <button id="loadBtn" class="btn">Load</button>
-                <button id="shareBtn" class="btn">Share</button>
-              </div>
-            </div>
-
-            <div class="tablewrap">
-              <table class="table">
-                <thead>
-                  <tr>
-                    <th>Date</th>
-                    <th>Wake</th>
-                    <th>Sleep</th>
-                  </tr>
-                </thead>
-                <tbody id="planBody"></tbody>
-              </table>
-            </div>
-
-            <p class="sub">Tip: keep morning light bright and evening light calm to help the nudge stick.</p>
+          </header>
+          <div class="nudge-controls">
+            <label class="field">
+              <span class="field-label">Target date</span>
+              <input id="targetDate" type="date" />
+            </label>
+            <label class="field">
+              <span class="field-label">Plan for</span>
+              <select id="plannerMode">
+                <option value="wake">Wake time</option>
+                <option value="sleep">Sleep time</option>
+              </select>
+            </label>
+            <label class="field">
+              <span class="field-label">Time zone</span>
+              <select id="timeZone"></select>
+            </label>
+            <label class="field">
+              <span class="field-label">Target <span id="plannerModeLabel">wake</span> time</span>
+              <input id="targetTime" type="time" />
+            </label>
+            <label class="field field-slider">
+              <span class="field-label">Max shift per day <span id="dailyStepLabel">±30 min</span></span>
+              <input id="dailyStep" type="range" min="5" max="120" step="5" aria-describedby="dailyStepHint" />
+              <span id="dailyStepHint" class="text-muted">Max change per day applied to target wake/sleep.</span>
+            </label>
+          </div>
+          <div class="nudge-cards" id="nudgeCards" aria-live="polite"></div>
+          <div class="nudge-actions">
+            <button id="toggleGhost" class="btn btn-secondary" type="button">Nudge overlay</button>
+            <button id="applyPlan" class="btn btn-primary" type="button">Apply to plan</button>
           </div>
         </section>
       </main>
 
-      <section class="card" id="overrideCard">
-        <div class="card-head"><h2>Testing Override</h2></div>
-        <p class="sub">Override the current date and time used for calculations.</p>
-        <div class="grid2">
-          <div class="field">
-            <label for="overrideInput">Override &ldquo;now&rdquo;</label>
-            <input id="overrideInput" type="datetime-local" />
-          </div>
-          <div class="field">
-            <label>&nbsp;</label>
-            <div class="row">
-              <button id="applyOverride" class="btn">Apply</button>
-              <button id="clearOverride" class="btn">Clear</button>
+      <section class="panel panel-advanced" aria-labelledby="advancedTitle">
+        <header class="panel-head advanced-toggle">
+          <button id="advancedToggle" class="btn btn-ghost" type="button" aria-expanded="false" aria-controls="advancedBody">Advanced</button>
+        </header>
+        <div id="advancedBody" class="advanced-body" hidden>
+          <p class="text-muted">Override the current date and time used for calculations.</p>
+          <div class="advanced-grid">
+            <label class="field">
+              <span class="field-label">Override “now”</span>
+              <input id="overrideInput" type="datetime-local" />
+            </label>
+            <div class="advanced-actions">
+              <button id="applyOverride" class="btn btn-secondary" type="button">Apply</button>
+              <button id="clearOverride" class="btn btn-ghost" type="button">Clear</button>
             </div>
           </div>
+          <div class="text-muted" id="overrideStatus">Using real current time.</div>
         </div>
-        <div class="sub" id="overrideStatus">Using real current time.</div>
       </section>
-    </div>
 
-    <div
-      id="toastContainer"
-      class="toast-container"
-      role="status"
-      aria-live="polite"
-      aria-atomic="true"
-    ></div>
+      <div id="toastContainer" class="toast-container" role="status" aria-live="polite" aria-atomic="true"></div>
 
-    <div id="shareLayer" class="share-layer" hidden>
-      <div class="share-layer__backdrop" data-share-close></div>
-      <div
-        class="share-dialog"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="shareDialogTitle"
-      >
-        <button
-          type="button"
-          class="share-dialog__close"
-          data-share-close
-          aria-label="Close share dialog"
-        >
-          ×
-        </button>
-        <h2 id="shareDialogTitle">Share your plan</h2>
-        <p class="sub">
-          Send this link to share your current schedule. Anyone with the link can
-          load these settings.
-        </p>
-        <label class="label" for="shareLinkInput">Share link</label>
-        <input
-          id="shareLinkInput"
-          class="share-dialog__input"
-          type="text"
-          readonly
-        />
-        <div class="share-dialog__buttons">
-          <button id="shareCopyLink" class="btn" type="button">Copy link</button>
-          <button id="shareCopyCode" class="btn" type="button">Copy code</button>
-        </div>
-        <div>
-          <div class="label">Share code</div>
-          <div id="shareCode" class="share-code" aria-live="polite"></div>
+      <div id="shareLayer" class="share-layer" hidden>
+        <div class="share-layer__backdrop" data-share-close></div>
+        <div class="share-dialog" role="dialog" aria-modal="true" aria-labelledby="shareDialogTitle">
+          <button type="button" class="share-dialog__close" data-share-close aria-label="Close share dialog">×</button>
+          <h2 id="shareDialogTitle">Share your plan</h2>
+          <p class="text-muted">Send this link to share your current schedule. Anyone with the link can load these settings.</p>
+          <label class="field">
+            <span class="field-label">Share link</span>
+            <input id="shareLinkInput" class="share-dialog__input" type="text" readonly />
+          </label>
+          <div class="share-dialog__buttons">
+            <button id="shareCopyLink" class="btn btn-primary" type="button">Copy link</button>
+            <button id="shareCopyCode" class="btn btn-secondary" type="button">Copy code</button>
+          </div>
+          <div>
+            <div class="field-label">Share code</div>
+            <div id="shareCode" class="share-code" aria-live="polite"></div>
+          </div>
         </div>
       </div>
     </div>
