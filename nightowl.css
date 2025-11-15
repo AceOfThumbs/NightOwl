@@ -367,7 +367,7 @@ textarea {
 
 .day-item {
   display: grid;
-  grid-template-columns: auto 1fr auto auto;
+  grid-template-columns: auto 1fr auto auto auto;
   gap: var(--space-3);
   align-items: center;
   padding: var(--space-3);
@@ -404,9 +404,31 @@ textarea {
 }
 
 .day-item__time {
-  font-size: 0.9rem;
-  color: var(--text-2);
+  font-size: 0.95rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-1);
+  background: var(--card);
+  border: 1px solid var(--muted);
+  border-radius: var(--radius-sm);
+  padding: var(--space-2) var(--space-3);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
   cursor: pointer;
+  transition: background 150ms ease, border-color 150ms ease, color 150ms ease;
+}
+
+.day-item__time:hover,
+.day-item__time:focus-visible {
+  background: var(--muted);
+  border-color: var(--accent);
+  color: var(--text-1);
+  outline: none;
+}
+
+.day-item__time:focus-visible {
+  box-shadow: 0 0 0 2px rgba(122, 162, 255, 0.35);
 }
 
 .drag-handle {
@@ -781,6 +803,15 @@ select {
 .clock-feels-hand {
   stroke-width: 4;
   stroke-linecap: round;
+}
+
+.clock-hour-number {
+  fill: var(--text-3);
+  font-size: 0.75rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  text-anchor: middle;
+  pointer-events: none;
 }
 
 .clock-now-hand {
