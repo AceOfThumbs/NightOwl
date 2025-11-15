@@ -454,7 +454,7 @@
     const events = state.events
       .filter((evt) => !filteredTypes || evt.type === filteredTypes)
       .slice()
-      .sort((a, b) => a.startMin - b.startMin);
+      .sort(compareEvents);
 
     events.forEach((evt) => {
       drawEventArc(evt, center, radius);
@@ -534,6 +534,21 @@
     });
     dayRing.appendChild(startHandle);
     dayRing.appendChild(endHandle);
+  }
+
+  function compareEvents(a, b) {
+    const aIsSleep = a.type === 'sleep';
+    const bIsSleep = b.type === 'sleep';
+    if (aIsSleep !== bIsSleep) {
+      return aIsSleep ? 1 : -1;
+    }
+    if (a.startMin !== b.startMin) {
+      return a.startMin - b.startMin;
+    }
+    const titleA = (a.title || '').toLowerCase();
+    const titleB = (b.title || '').toLowerCase();
+    if (titleA === titleB) return 0;
+    return titleA > titleB ? 1 : -1;
   }
 
   function handleArcHover(id) {
@@ -635,7 +650,10 @@
       dayList.appendChild(empty);
       return;
     }
-    const events = state.events.filter((evt) => state.activeFilter === 'all' || evt.type === state.activeFilter);
+    const events = state.events
+      .filter((evt) => state.activeFilter === 'all' || evt.type === state.activeFilter)
+      .slice()
+      .sort(compareEvents);
     if (!events.length) {
       const empty = document.createElement('li');
       empty.className = 'text-muted';
@@ -649,7 +667,6 @@
     events.forEach((evt) => {
         const li = document.createElement('li');
         li.className = 'day-item';
-        li.draggable = true;
         li.dataset.id = evt.id;
         if (evt.id === state.selectedId) {
           li.dataset.selected = 'true';
@@ -692,10 +709,6 @@
         timeButton.setAttribute('aria-expanded', isEditing ? 'true' : 'false');
         timeButton.addEventListener('click', () => toggleTimeEditor(evt.id));
 
-        const dragHandle = document.createElement('span');
-        dragHandle.className = 'drag-handle';
-        dragHandle.textContent = '≡';
-
         const actions = document.createElement('div');
         actions.className = 'day-item__actions';
         const deleteBtn = document.createElement('button');
@@ -709,7 +722,6 @@
         li.appendChild(icon);
         li.appendChild(titleWrap);
         li.appendChild(timeButton);
-        li.appendChild(dragHandle);
         li.appendChild(actions);
 
         if (isEditing) {
@@ -717,30 +729,16 @@
         }
 
         li.addEventListener('click', (event) => {
-          if (event.target === deleteBtn || event.target === titleInput || event.target === timeButton) return;
-          selectEvent(evt.id);
-        });
-
-        li.addEventListener('dragstart', (event) => {
-          event.dataTransfer.setData('text/plain', evt.id);
-          event.dataTransfer.effectAllowed = 'move';
-          li.classList.add('dragging');
-        });
-        li.addEventListener('dragend', () => li.classList.remove('dragging'));
-        li.addEventListener('dragover', (event) => {
-          event.preventDefault();
-          const draggingId = event.dataTransfer.getData('text/plain');
-          if (!draggingId || draggingId === evt.id) return;
-          const draggingIndex = state.events.findIndex((e) => e.id === draggingId);
-          const targetIndex = state.events.findIndex((e) => e.id === evt.id);
-          if (draggingIndex === -1 || targetIndex === -1) return;
-          if (draggingIndex < targetIndex) {
-            state.events.splice(targetIndex + 1, 0, state.events.splice(draggingIndex, 1)[0]);
-          } else {
-            state.events.splice(targetIndex, 0, state.events.splice(draggingIndex, 1)[0]);
+          const target = event.target;
+          if (
+            target === deleteBtn ||
+            target === titleInput ||
+            target === timeButton ||
+            target.closest?.('.time-editor')
+          ) {
+            return;
           }
-          persistState();
-          render();
+          selectEvent(evt.id);
         });
 
         dayList.appendChild(li);

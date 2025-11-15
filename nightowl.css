@@ -248,7 +248,7 @@ textarea {
   display: grid;
   place-items: center;
   padding: var(--space-3);
-  touch-action: none;
+  touch-action: pan-y pinch-zoom;
 }
 
 .day-ring svg {
@@ -368,7 +368,7 @@ textarea {
 
 .day-item {
   display: grid;
-  grid-template-columns: auto 1fr auto auto auto;
+  grid-template-columns: auto 1fr auto auto;
   gap: var(--space-3);
   row-gap: var(--space-2);
   align-items: start;
@@ -451,17 +451,6 @@ textarea {
 
 .day-item__time:focus-visible {
   box-shadow: 0 0 0 2px rgba(122, 162, 255, 0.35);
-}
-
-.drag-handle {
-  cursor: grab;
-  color: var(--text-3);
-  font-size: 1.25rem;
-  align-self: start;
-}
-
-.drag-handle:active {
-  cursor: grabbing;
 }
 
 .day-item__actions {
@@ -789,7 +778,7 @@ select {
   stroke-width: 16;
   cursor: pointer;
   filter: drop-shadow(0 2px 8px rgba(0, 0, 0, 0.45));
-  touch-action: none;
+  touch-action: pan-y pinch-zoom;
 }
 
 .arc-path[data-type="sleep"] {
@@ -929,7 +918,6 @@ select {
     grid-column: 1 / -1;
     width: 100%;
   }
-  .drag-handle,
   .day-item__actions {
     grid-column: 2 / 3;
     justify-self: end;
