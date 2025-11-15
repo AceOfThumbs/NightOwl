@@ -382,14 +382,23 @@
 
     for (let h = 0; h < 24; h++) {
       const angle = (h / 24) * 360;
+      const cos = Math.cos(((angle - 90) * Math.PI) / 180);
+      const sin = Math.sin(((angle - 90) * Math.PI) / 180);
       const line = createSVG('line', {
-        x1: center + Math.cos(((angle - 90) * Math.PI) / 180) * (radius - 24),
-        y1: center + Math.sin(((angle - 90) * Math.PI) / 180) * (radius - 24),
-        x2: center + Math.cos(((angle - 90) * Math.PI) / 180) * (radius + 8),
-        y2: center + Math.sin(((angle - 90) * Math.PI) / 180) * (radius + 8),
+        x1: center + cos * (radius - 24),
+        y1: center + sin * (radius - 24),
+        x2: center + cos * (radius + 8),
+        y2: center + sin * (radius + 8),
         class: 'clock-hour-tick'
       });
       dayRing.appendChild(line);
+      const label = createSVG('text', {
+        x: center + cos * (radius + 32),
+        y: center + sin * (radius + 32) + 4,
+        class: 'clock-hour-number'
+      });
+      label.textContent = pad(h);
+      dayRing.appendChild(label);
     }
 
     const now = getNow();
@@ -534,14 +543,14 @@
     const id = evt.currentTarget.getAttribute('data-event-id');
     const edge = evt.currentTarget.getAttribute('data-handle');
     state.pointerDrag = { id, edge };
-    evt.currentTarget.setPointerCapture(evt.pointerId);
-    evt.currentTarget.addEventListener('pointermove', handlePointerMove);
-    evt.currentTarget.addEventListener('pointerup', handlePointerEnd);
-    evt.currentTarget.addEventListener('pointercancel', handlePointerEnd);
+    document.addEventListener('pointermove', handlePointerMove);
+    document.addEventListener('pointerup', handlePointerEnd);
+    document.addEventListener('pointercancel', handlePointerEnd);
   }
 
   function handlePointerMove(evt) {
     if (!state.pointerDrag) return;
+    evt.preventDefault();
     const { id, edge } = state.pointerDrag;
     const event = state.events.find((e) => e.id === id);
     if (!event) return;
@@ -563,11 +572,12 @@
 
   function handlePointerEnd(evt) {
     if (!state.pointerDrag) return;
+    evt.preventDefault();
     state.pointerDrag = null;
-    evt.currentTarget.releasePointerCapture(evt.pointerId);
-    evt.currentTarget.removeEventListener('pointermove', handlePointerMove);
-    evt.currentTarget.removeEventListener('pointerup', handlePointerEnd);
-    evt.currentTarget.removeEventListener('pointercancel', handlePointerEnd);
+    document.removeEventListener('pointermove', handlePointerMove);
+    document.removeEventListener('pointerup', handlePointerEnd);
+    document.removeEventListener('pointercancel', handlePointerEnd);
+    render();
   }
 
   function handleKeyboardResize(evt, edge) {
@@ -646,9 +656,10 @@
         titleWrap.appendChild(durationLabel);
 
         const timeButton = document.createElement('button');
-        timeButton.className = 'btn btn-ghost';
+        timeButton.className = 'day-item__time';
         timeButton.type = 'button';
         timeButton.textContent = `${minutesToLabel(evt.startMin)} – ${minutesToLabel(evt.endMin)}`;
+        timeButton.setAttribute('aria-label', `Edit time for ${evt.title}`);
         timeButton.addEventListener('click', () => openTimeEditor(li, evt));
 
         const dragHandle = document.createElement('span');
