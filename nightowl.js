@@ -101,7 +101,7 @@
     plannerMode: 'wake',
     plannerDirection: 'auto',
     targetTime: '07:30',
-    targetDate: todayISO(),
+    targetDate: null,
     dailyStep: 30,
     ghostVisible: false,
     ghostDelta: 0,
@@ -110,6 +110,8 @@
     theme: document.documentElement.getAttribute('data-theme') || 'dark',
     overrideNow: null
   };
+
+  state.targetDate = todayISO();
 
   const formatterCache = new Map();
 
