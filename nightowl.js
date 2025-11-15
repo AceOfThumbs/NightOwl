@@ -29,7 +29,7 @@
   const dailyStepRange = $('dailyStep');
   const dailyStepLabel = $('dailyStepLabel');
   const nudgeCardsEl = $('nudgeCards');
-  const toggleGhostBtn = $('toggleGhost');
+  const adjustmentCurveSelect = $('adjustmentCurve');
   const applyPlanBtn = $('applyPlan');
   const segmentBtns = Array.from(document.querySelectorAll('.segment-btn'));
   const textScaleDown = $('textScaleDown');
@@ -103,9 +103,9 @@
     targetTime: '07:30',
     targetDate: null,
     dailyStep: 30,
-    ghostVisible: false,
-    ghostDelta: 0,
-    ghostPlan: [],
+    adjustmentCurve: 'linear',
+    nudgeDelta: 0,
+    nudgePlan: [],
     textScale: 1,
     theme: document.documentElement.getAttribute('data-theme') || 'dark',
     overrideNow: null
@@ -118,6 +118,19 @@
   function todayISO() {
     const now = getNow();
     return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+  }
+
+  function startOfDay(date) {
+    const d = new Date(date);
+    d.setHours(0, 0, 0, 0);
+    return d;
+  }
+
+  function parseLocalDate(value) {
+    if (!value) return null;
+    const [year, month, day] = String(value).split('-').map(Number);
+    if ([year, month, day].some((part) => Number.isNaN(part))) return null;
+    return new Date(year, month - 1, day);
   }
 
   function getNow() {
@@ -180,6 +193,7 @@
         state.dailyStep = clamp(Number(prefs.dailyStep) || state.dailyStep, 5, 120);
         state.plannerMode = prefs.plannerMode || state.plannerMode;
         state.plannerDirection = prefs.plannerDirection || state.plannerDirection;
+        state.adjustmentCurve = prefs.adjustmentCurve === 'curved' ? 'curved' : 'linear';
       }
     } catch (err) {
       console.warn('Failed to load prefs', err);
@@ -208,7 +222,8 @@
         targetTime: state.targetTime,
         dailyStep: state.dailyStep,
         plannerMode: state.plannerMode,
-        plannerDirection: state.plannerDirection
+        plannerDirection: state.plannerDirection,
+        adjustmentCurve: state.adjustmentCurve
       })
     );
     if (state.overrideNow) {
@@ -346,7 +361,6 @@
     renderDayList();
     renderNudgePlan();
     renderNextEventLabel();
-    updateGhostButtonState();
   }
 
   function renderClock() {
@@ -440,13 +454,9 @@
       .filter((evt) => !filteredTypes || evt.type === filteredTypes)
       .slice()
       .sort((a, b) => a.startMin - b.startMin);
-    const ghostOffset = state.ghostVisible ? state.ghostDelta : 0;
 
     events.forEach((evt) => {
-      drawEventArc(evt, center, radius, false);
-      if (state.ghostVisible) {
-        drawEventArc(shiftEvent(evt, ghostOffset), center, radius, true);
-      }
+      drawEventArc(evt, center, radius);
     });
 
     if (state.selectedId) {
@@ -466,7 +476,7 @@
     };
   }
 
-  function drawEventArc(evt, center, radius, ghost) {
+  function drawEventArc(evt, center, radius) {
     const segments = splitEvent(evt.startMin, evt.endMin);
     segments.forEach(([start, end]) => {
       const startAngle = angleFromMinutes(start);
@@ -476,7 +486,6 @@
         class: 'arc-path',
         'data-type': evt.type,
         'data-event-id': evt.id,
-        'data-ghost': ghost ? 'true' : 'false',
         'data-selected': state.selectedId === evt.id ? 'true' : 'false',
         stroke: getEventColor(evt.type)
       });
@@ -869,51 +878,105 @@
     return { sunrise, sunset };
   }
 
+  function easeLinear(t) {
+    return t;
+  }
+
+  function easeInOut(t) {
+    return 0.5 - 0.5 * Math.cos(Math.PI * t);
+  }
+
+  function formatShiftMinutes(value) {
+    const rounded = Math.round(value * 10) / 10;
+    if (Math.abs(rounded) < 0.05) return 'Shift 0 min';
+    const display = Number.isInteger(rounded) ? Math.round(rounded) : rounded.toFixed(1);
+    return `Shift ${rounded > 0 ? '+' : ''}${display} min`;
+  }
+
   function renderNudgePlan() {
     const sleepEvent = state.events.find((evt) => evt.type === 'sleep');
     if (!sleepEvent) {
       nudgeCardsEl.innerHTML = '<p class="text-muted">Add a sleep block to enable nudges.</p>';
-      state.ghostPlan = [];
+      state.nudgePlan = [];
+      state.nudgeDelta = 0;
       return;
     }
+
     const currentStart = sleepEvent.startMin;
     const currentEnd = sleepEvent.endMin;
+    const sleepDuration = minutesDiff(currentStart, currentEnd);
     const reference = state.plannerMode === 'wake' ? currentEnd : currentStart;
     const targetMinutes = toMinutes(state.targetTime);
     let diff = ((targetMinutes - reference + MINUTES_IN_DAY) % MINUTES_IN_DAY + MINUTES_IN_DAY) % MINUTES_IN_DAY;
     if (diff > MINUTES_IN_DAY / 2) diff -= MINUTES_IN_DAY;
     if (state.plannerDirection === 'earlier' && diff > 0) diff -= MINUTES_IN_DAY;
     if (state.plannerDirection === 'later' && diff < 0) diff += MINUTES_IN_DAY;
+
     const step = clamp(Number(state.dailyStep) || 30, 5, 120);
-    const daysNeeded = Math.max(1, Math.ceil(Math.abs(diff) / step));
-    const perDay = clamp(Math.round(diff / daysNeeded), -step, step);
-    const plan = [];
-    let running = reference;
-    const baseDate = new Date(state.targetDate || todayISO());
-    for (let i = 0; i < daysNeeded; i++) {
-      running = (running + perDay + MINUTES_IN_DAY) % MINUTES_IN_DAY;
-      const dayDate = new Date(baseDate);
-      dayDate.setDate(baseDate.getDate() + i);
-      const label = dayDate.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
-      const wake = state.plannerMode === 'wake' ? running : (running + minutesDiff(currentStart, currentEnd)) % MINUTES_IN_DAY;
-      const sleep = state.plannerMode === 'wake' ? (running - minutesDiff(currentStart, currentEnd) + MINUTES_IN_DAY) % MINUTES_IN_DAY : running;
-      plan.push({ label, wake, sleep });
+    const today = startOfDay(getNow());
+    const targetDate = parseLocalDate(state.targetDate) || today;
+    const direction = targetDate >= today ? 1 : -1;
+    const dayMs = 24 * 60 * 60 * 1000;
+    const totalDays = Math.abs(Math.round((targetDate - today) / dayMs)) + 1;
+    const easeFn = state.adjustmentCurve === 'curved' ? easeInOut : easeLinear;
+    const cumulativeTargets = [];
+
+    for (let i = 0; i < totalDays; i++) {
+      const progress = totalDays === 1 ? 1 : (i + 1) / totalDays;
+      cumulativeTargets[i] = diff * easeFn(progress);
     }
-    state.ghostPlan = plan;
-    state.ghostDelta = diff;
+
+    let appliedShift = 0;
+    const plan = [];
+    const startDate = new Date(today);
+
+    for (let i = 0; i < totalDays; i++) {
+      const dayDate = new Date(startDate);
+      dayDate.setDate(startDate.getDate() + i * direction);
+      let targetShift = cumulativeTargets[i] - appliedShift;
+      let shift;
+
+      if (i === totalDays - 1) {
+        shift = diff - appliedShift;
+        appliedShift = diff;
+      } else if (Math.abs(targetShift) > step) {
+        shift = Math.sign(targetShift) * step;
+        appliedShift += shift;
+        const overshoot = targetShift - shift;
+        for (let j = i + 1; j < cumulativeTargets.length; j++) {
+          cumulativeTargets[j] -= overshoot;
+        }
+      } else {
+        shift = targetShift;
+        appliedShift += shift;
+      }
+
+      const running = (reference + appliedShift + MINUTES_IN_DAY) % MINUTES_IN_DAY;
+      const wake = state.plannerMode === 'wake' ? running : (running + sleepDuration) % MINUTES_IN_DAY;
+      const sleep =
+        state.plannerMode === 'wake'
+          ? (running - sleepDuration + MINUTES_IN_DAY) % MINUTES_IN_DAY
+          : running;
+      const label = dayDate.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
+      plan.push({ label, wake, sleep, shift });
+    }
+
+    state.nudgePlan = plan;
+    state.nudgeDelta = diff;
+
     nudgeCardsEl.innerHTML = '';
     plan.forEach((entry) => {
       const card = document.createElement('div');
       card.className = 'nudge-card';
       const label = document.createElement('div');
       label.className = 'nudge-card__label';
-      label.innerHTML = `<strong>${entry.label}</strong><span class="text-muted">Wake ${minutesToLabel(entry.wake)} · Sleep ${minutesToLabel(entry.sleep)}</span>`;
+      const shiftText = formatShiftMinutes(entry.shift || 0);
+      label.innerHTML = `<strong>${entry.label}</strong><span class="text-muted">${shiftText} · Wake ${minutesToLabel(entry.wake)} · Sleep ${minutesToLabel(entry.sleep)}</span>`;
       const mini = createMiniRing(entry);
       card.appendChild(label);
       card.appendChild(mini);
       nudgeCardsEl.appendChild(card);
     });
-    updateGhostButtonState();
   }
 
   function createMiniRing(entry) {
@@ -939,30 +1002,16 @@
     return svg;
   }
 
-  function updateGhostButtonState() {
-    if (!toggleGhostBtn) return;
-    toggleGhostBtn.classList.toggle('btn-primary', state.ghostVisible);
-    toggleGhostBtn.classList.toggle('btn-secondary', !state.ghostVisible);
-    toggleGhostBtn.textContent = state.ghostVisible ? 'Hide nudge overlay' : 'Nudge overlay';
-  }
-
-  function toggleGhostOverlay() {
-    if (!state.ghostPlan.length) {
-      showToast('Nothing to overlay yet — adjust the nudge inputs first.', 'info');
+  function applyNudgePlan() {
+    if (!state.nudgePlan.length) {
+      showToast('Adjust the nudge inputs to generate a plan first.', 'info');
       return;
     }
-    state.ghostVisible = !state.ghostVisible;
-    updateGhostButtonState();
-    render();
-  }
-
-  function applyGhostToPlan() {
-    if (!state.ghostVisible || !state.ghostPlan.length) {
-      showToast('Generate a nudge overlay first', 'info');
+    if (Math.abs(state.nudgeDelta) < 0.5) {
+      showToast('You’re already aligned with the target.', 'info');
       return;
     }
-    state.events = state.events.map((evt) => shiftEvent(evt, state.ghostDelta));
-    state.ghostVisible = false;
+    state.events = state.events.map((evt) => shiftEvent(evt, state.nudgeDelta));
     persistState();
     render();
     showToast('Nudge applied to your day', 'success');
@@ -979,6 +1028,13 @@
     state.plannerMode = mode;
     plannerModeSelect.value = mode;
     plannerModeLabel.textContent = mode === 'wake' ? 'wake' : 'sleep';
+    persistState();
+    renderNudgePlan();
+  }
+
+  function updateAdjustmentCurve(value) {
+    state.adjustmentCurve = value === 'curved' ? 'curved' : 'linear';
+    if (adjustmentCurveSelect) adjustmentCurveSelect.value = state.adjustmentCurve;
     persistState();
     renderNudgePlan();
   }
@@ -1127,14 +1183,15 @@
     if (targetTimeInput) targetTimeInput.addEventListener('change', (evt) => updateTargetTime(evt.target.value));
     if (targetDateInput) targetDateInput.addEventListener('change', (evt) => updateTargetDate(evt.target.value));
     if (dailyStepRange) dailyStepRange.addEventListener('input', (evt) => updateDailyStep(evt.target.value));
-    toggleGhostBtn.addEventListener('click', toggleGhostOverlay);
-    applyPlanBtn.addEventListener('click', applyGhostToPlan);
+    if (adjustmentCurveSelect) adjustmentCurveSelect.addEventListener('change', (evt) => updateAdjustmentCurve(evt.target.value));
+    applyPlanBtn.addEventListener('click', applyNudgePlan);
     plannerModeSelect.value = state.plannerMode;
     targetTimeInput.value = state.targetTime;
     targetDateInput.value = state.targetDate;
     dailyStepRange.value = state.dailyStep;
     dailyStepLabel.textContent = `±${state.dailyStep} min`;
     plannerModeLabel.textContent = state.plannerMode === 'wake' ? 'wake' : 'sleep';
+    if (adjustmentCurveSelect) adjustmentCurveSelect.value = state.adjustmentCurve;
     segmentBtns.forEach((btn) => btn.setAttribute('aria-checked', btn.dataset.dir === state.plannerDirection ? 'true' : 'false'));
   }
 

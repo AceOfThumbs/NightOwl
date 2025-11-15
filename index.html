@@ -96,6 +96,13 @@
               </select>
             </label>
             <label class="field">
+              <span class="field-label">Adjustment style</span>
+              <select id="adjustmentCurve">
+                <option value="linear">Linear</option>
+                <option value="curved">Curved ease</option>
+              </select>
+            </label>
+            <label class="field">
               <span class="field-label">Time zone</span>
               <select id="timeZone"></select>
             </label>
@@ -111,7 +118,6 @@
           </div>
           <div class="nudge-cards" id="nudgeCards" aria-live="polite"></div>
           <div class="nudge-actions">
-            <button id="toggleGhost" class="btn btn-secondary" type="button">Nudge overlay</button>
             <button id="applyPlan" class="btn btn-primary" type="button">Apply to plan</button>
           </div>
         </section>
