@@ -74,6 +74,12 @@ body {
   min-height: 100vh;
 }
 
+html.no-scroll,
+body.no-scroll {
+  overflow: hidden;
+  touch-action: none;
+}
+
 button,
 input,
 select,
@@ -249,6 +255,10 @@ textarea {
   place-items: center;
   padding: var(--space-3);
   touch-action: pan-y pinch-zoom;
+}
+
+.day-ring.is-dragging {
+  touch-action: none;
 }
 
 .day-ring svg {
@@ -584,6 +594,7 @@ select {
   color: var(--text-1);
   min-height: 44px;
   padding: 0 var(--space-3);
+  font-size: calc(1rem * var(--scale));
 }
 
 input[type="time"],
@@ -773,7 +784,9 @@ select {
   border-radius: var(--radius-sm);
   border: 1px solid var(--muted);
   padding: var(--space-3);
-  word-break: break-all;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .quick-add-select {
