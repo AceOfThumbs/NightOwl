@@ -67,6 +67,10 @@
             <p class="text-muted">Plan anchors for your day. Add items or drag them on the clock.</p>
           </header>
           <div class="list-controls">
+            <label class="toggle">
+              <input id="lockWakeToggle" type="checkbox" checked />
+              <span class="toggle__label">Lock to Wake</span>
+            </label>
             <button id="addDayItem" class="btn btn-primary" type="button">Add item</button>
           </div>
           <ul id="dayList" class="day-list" aria-live="polite"></ul>

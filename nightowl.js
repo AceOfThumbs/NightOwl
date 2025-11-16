@@ -7,7 +7,6 @@
   const SNAP_DEFAULT = 5;
   const SNAP_ALT = 1;
   const SNAP_SHIFT = 15;
-  const MIN_EVENT_DURATION = 10;
   const MAX_TEXT_SCALE = 1.35;
   const MIN_TEXT_SCALE = 0.85;
   const TEXT_SCALE_STEP = 0.1;
@@ -49,6 +48,7 @@
   const shareCopyCodeBtn = $('shareCopyCode');
   const shareCode = $('shareCode');
   const shareIncludeEventsToggle = $('shareIncludeEvents');
+  const lockWakeToggle = $('lockWakeToggle');
   const sharePlannerBtn = $('sharePlanner');
   const savePlannerBtn = $('savePlanner');
   const loadPlannerBtn = $('loadPlanner');
@@ -91,13 +91,13 @@
   ];
 
   const defaultEvents = () => [
-    createEvent('sleep', 'Sleep', toMinutes('23:00'), toMinutes('07:00')),
-    createEvent('wake', 'Wake up', toMinutes('07:00'), toMinutes('07:30')),
-    createEvent('meal', 'Breakfast', toMinutes('07:30'), toMinutes('08:00')),
-    createEvent('work', 'Work', toMinutes('09:00'), toMinutes('17:00')),
-    createEvent('meal', 'Lunch', toMinutes('12:30'), toMinutes('13:15')),
-    createEvent('exercise', 'Exercise', toMinutes('18:00'), toMinutes('19:00')),
-    createEvent('meal', 'Dinner', toMinutes('19:30'), toMinutes('20:15'))
+    createEvent('sleep', 'Sleep', toMinutes('23:00'), minutesDiff(toMinutes('23:00'), toMinutes('07:00'))),
+    createEvent('wake', 'Wake up', toMinutes('07:00'), 30),
+    createEvent('meal', 'Breakfast', toMinutes('07:30'), 30),
+    createEvent('work', 'Work', toMinutes('09:00'), minutesDiff(toMinutes('09:00'), toMinutes('17:00'))),
+    createEvent('meal', 'Lunch', toMinutes('12:30'), 45),
+    createEvent('exercise', 'Exercise', toMinutes('18:00'), 60),
+    createEvent('meal', 'Dinner', toMinutes('19:30'), 45)
   ];
 
   const state = {
@@ -118,7 +118,8 @@
     textScale: 1,
     theme: document.documentElement.getAttribute('data-theme') || 'dark',
     overrideNow: null,
-    shareIncludeEvents: false
+    shareIncludeEvents: false,
+    lockToWake: true
   };
 
   state.targetDate = todayISO();
@@ -174,18 +175,33 @@
     return diff;
   }
 
-  function createEvent(type, title, startMin, endMin) {
+  function createEvent(type, title, startMin, duration) {
     const id = typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
       ? crypto.randomUUID()
       : `evt-${Math.random().toString(36).slice(2, 10)}`;
-    return { id, type, title, startMin, endMin, repeat: 'daily' };
+    const eventDuration = typeof duration === 'number' ? duration : eventTypes[type]?.defaultDuration || 60;
+    const start = ((startMin % MINUTES_IN_DAY) + MINUTES_IN_DAY) % MINUTES_IN_DAY;
+    return { id, type, title, startMin: start, endMin: (start + eventDuration) % MINUTES_IN_DAY, duration: eventDuration, repeat: 'daily' };
+  }
+
+  function normalizeEvent(evt) {
+    if (!evt) return null;
+    const type = eventTypes[evt.type] ? evt.type : 'custom';
+    const title = evt.title || eventTypes[type]?.label || 'Event';
+    const start = typeof evt.startMin === 'number' ? ((evt.startMin % MINUTES_IN_DAY) + MINUTES_IN_DAY) % MINUTES_IN_DAY : 0;
+    let duration = typeof evt.duration === 'number' ? evt.duration : null;
+    if (duration === null && typeof evt.endMin === 'number') {
+      duration = minutesDiff(start, evt.endMin);
+    }
+    if (duration === null) duration = eventTypes[type]?.defaultDuration || 60;
+    return { ...evt, type, title, startMin: start, duration, endMin: (start + duration) % MINUTES_IN_DAY };
   }
 
   function loadState() {
     try {
       const stored = JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null');
       if (stored && Array.isArray(stored.events)) {
-        state.events = stored.events.map((evt) => ({ ...evt }));
+        state.events = stored.events.map((evt) => normalizeEvent(evt)).filter(Boolean);
       } else {
         state.events = defaultEvents();
       }
@@ -205,6 +221,7 @@
         state.plannerDirection = prefs.plannerDirection || state.plannerDirection;
         state.adjustmentCurve = prefs.adjustmentCurve === 'curved' ? 'curved' : 'linear';
         state.shareIncludeEvents = Boolean(prefs.shareIncludeEvents);
+        state.lockToWake = prefs.lockToWake !== false;
       }
     } catch (err) {
       console.warn('Failed to load prefs', err);
@@ -235,7 +252,8 @@
         plannerMode: state.plannerMode,
         plannerDirection: state.plannerDirection,
         adjustmentCurve: state.adjustmentCurve,
-        shareIncludeEvents: state.shareIncludeEvents
+        shareIncludeEvents: state.shareIncludeEvents,
+        lockToWake: state.lockToWake
       })
     );
     if (state.overrideNow) {
@@ -451,7 +469,7 @@
     const centerDot = createSVG('circle', { cx: center, cy: center, r: 6, class: 'clock-center' });
     dayRing.appendChild(centerDot);
 
-    renderEventArcs(center, radius);
+    renderEventDots(center, radius);
     updateClockLabels(nowMinutes, feelsLikeMinutes);
   }
 
@@ -460,7 +478,7 @@
     feelsLikeLabel.textContent = `Feels like ${minutesToTime(feelsMinutes)}`;
   }
 
-  function renderEventArcs(center, radius) {
+  function renderEventDots(center, radius) {
     const filteredTypes = state.activeFilter === 'all' ? null : state.activeFilter;
     const events = state.events
       .filter((evt) => !filteredTypes || evt.type === filteredTypes)
@@ -468,15 +486,8 @@
       .sort(compareEvents);
 
     events.forEach((evt) => {
-      drawEventArc(evt, center, radius);
+      drawEventDot(evt, center, radius);
     });
-
-    if (state.selectedId) {
-      const selected = events.find((evt) => evt.id === state.selectedId);
-      if (selected) {
-        drawHandles(selected, center, radius);
-      }
-    }
   }
 
   function shiftEvent(evt, delta) {
@@ -488,63 +499,57 @@
     };
   }
 
-  function drawEventArc(evt, center, radius) {
-    const segments = splitEvent(evt.startMin, evt.endMin);
-    segments.forEach(([start, end]) => {
-      const startAngle = angleFromMinutes(start);
-      const endAngle = angleFromMinutes(end);
-      const path = createSVG('path', {
-        d: describeArc(center, center, radius, startAngle, endAngle < startAngle ? endAngle + 360 : endAngle),
-        class: 'arc-path',
-        'data-type': evt.type,
-        'data-event-id': evt.id,
-        'data-selected': state.selectedId === evt.id ? 'true' : 'false',
-        stroke: getEventColor(evt.type)
-      });
-      path.addEventListener('pointerenter', () => handleArcHover(evt.id));
-      path.addEventListener('pointerleave', () => handleArcHover(null));
-      path.addEventListener('click', (event) => {
-        event.stopPropagation();
-        selectEvent(evt.id);
-      });
-      dayRing.appendChild(path);
+  function drawEventDot(evt, center, radius) {
+    const { x, y } = rotatePoint(evt.startMin, radius, center);
+    const dot = createSVG('circle', {
+      cx: x,
+      cy: y,
+      r: 10,
+      class: 'event-dot',
+      'data-type': evt.type,
+      'data-event-id': evt.id,
+      'data-selected': state.selectedId === evt.id ? 'true' : 'false',
+      tabindex: 0
+    });
+    dot.addEventListener('pointerenter', () => handleArcHover(evt.id));
+    dot.addEventListener('pointerleave', () => handleArcHover(null));
+    dot.addEventListener('click', (event) => {
+      event.stopPropagation();
+      selectEvent(evt.id);
+    });
+    dot.addEventListener('pointerdown', handlePointerStart);
+    dot.addEventListener('keydown', handleKeyboardNudge);
+    dayRing.appendChild(dot);
+  }
+
+  function signedDelta(from, to) {
+    const raw = ((to - from) % MINUTES_IN_DAY + MINUTES_IN_DAY) % MINUTES_IN_DAY;
+    return raw > MINUTES_IN_DAY / 2 ? raw - MINUTES_IN_DAY : raw;
+  }
+
+  function updateEventTiming(evt, newStart) {
+    const start = ((newStart % MINUTES_IN_DAY) + MINUTES_IN_DAY) % MINUTES_IN_DAY;
+    const duration = typeof evt.duration === 'number' ? evt.duration : eventTypes[evt.type]?.defaultDuration || 60;
+    evt.startMin = start;
+    evt.duration = duration;
+    evt.endMin = (start + duration) % MINUTES_IN_DAY;
+  }
+
+  function shiftLinkedEvents(delta, anchorId) {
+    if (!delta) return;
+    const shift = signedDelta(0, delta);
+    state.events.forEach((evt) => {
+      if (evt.id === anchorId) return;
+      updateEventTiming(evt, (evt.startMin + shift + MINUTES_IN_DAY) % MINUTES_IN_DAY);
     });
   }
 
-  function splitEvent(start, end) {
-    if (start === end) return [[start, (end + MINUTES_IN_DAY - 1) % MINUTES_IN_DAY]];
-    if (end > start) return [[start, end]];
-    return [
-      [start, MINUTES_IN_DAY],
-      [0, end]
-    ];
-  }
-
-  function drawHandles(evt, center, radius) {
-    const startPoint = rotatePoint(evt.startMin, radius, center);
-    const endPoint = rotatePoint(evt.endMin, radius, center);
-    const startHandle = createSVG('circle', {
-      cx: startPoint.x,
-      cy: startPoint.y,
-      r: 10,
-      class: 'arc-handle',
-      'data-handle': 'start',
-      'data-event-id': evt.id
-    });
-    const endHandle = createSVG('circle', {
-      cx: endPoint.x,
-      cy: endPoint.y,
-      r: 10,
-      class: 'arc-handle',
-      'data-handle': 'end',
-      'data-event-id': evt.id
-    });
-    [startHandle, endHandle].forEach((handle) => {
-      handle.addEventListener('pointerdown', handlePointerStart);
-      handle.addEventListener('keydown', (evtKey) => handleKeyboardResize(evtKey, handle.dataset.handle));
-    });
-    dayRing.appendChild(startHandle);
-    dayRing.appendChild(endHandle);
+  function applyStartChange(evt, newStart, deltaOverride) {
+    const delta = typeof deltaOverride === 'number' ? deltaOverride : signedDelta(evt.startMin, newStart);
+    updateEventTiming(evt, newStart);
+    if (evt.type === 'wake' && state.lockToWake) {
+      shiftLinkedEvents(delta, evt.id);
+    }
   }
 
   function compareEvents(a, b) {
@@ -577,8 +582,8 @@
   function handlePointerStart(evt) {
     evt.preventDefault();
     const id = evt.currentTarget.getAttribute('data-event-id');
-    const edge = evt.currentTarget.getAttribute('data-handle');
-    state.pointerDrag = { id, edge };
+    state.pointerDrag = { id, lastStart: state.events.find((e) => e.id === id)?.startMin ?? null };
+    selectEvent(id);
     document.addEventListener('pointermove', handlePointerMove);
     document.addEventListener('pointerup', handlePointerEnd);
     document.addEventListener('pointercancel', handlePointerEnd);
@@ -587,20 +592,14 @@
   function handlePointerMove(evt) {
     if (!state.pointerDrag) return;
     evt.preventDefault();
-    const { id, edge } = state.pointerDrag;
+    const { id } = state.pointerDrag;
     const event = state.events.find((e) => e.id === id);
     if (!event) return;
     const minutes = snapMinutes(getMinutesFromPointer(evt), getSnapStep(evt));
-    if (edge === 'start') {
-      const duration = minutesDiff(minutes, event.endMin);
-      if (duration >= MIN_EVENT_DURATION) {
-        event.startMin = minutes;
-      }
-    } else {
-      const duration = minutesDiff(event.startMin, minutes);
-      if (duration >= MIN_EVENT_DURATION) {
-        event.endMin = minutes;
-      }
+    const delta = signedDelta(state.pointerDrag.lastStart ?? event.startMin, minutes);
+    if (delta !== 0) {
+      applyStartChange(event, minutes, delta);
+      state.pointerDrag.lastStart = event.startMin;
     }
     persistState();
     render();
@@ -616,27 +615,16 @@
     render();
   }
 
-  function handleKeyboardResize(evt, edge) {
+  function handleKeyboardNudge(evt) {
     const increment = evt.shiftKey ? SNAP_SHIFT : SNAP_DEFAULT;
     if (!['ArrowLeft', 'ArrowRight'].includes(evt.key)) return;
     evt.preventDefault();
-    const id = evt.target.getAttribute('data-event-id');
+    const id = evt.currentTarget.getAttribute('data-event-id');
     const event = state.events.find((e) => e.id === id);
     if (!event) return;
     const delta = evt.key === 'ArrowRight' ? increment : -increment;
-    if (edge === 'start') {
-      const next = (event.startMin + delta + MINUTES_IN_DAY) % MINUTES_IN_DAY;
-      const duration = minutesDiff(next, event.endMin);
-      if (duration >= MIN_EVENT_DURATION) {
-        event.startMin = next;
-      }
-    } else {
-      const next = (event.endMin + delta + MINUTES_IN_DAY) % MINUTES_IN_DAY;
-      const duration = minutesDiff(event.startMin, next);
-      if (duration >= MIN_EVENT_DURATION) {
-        event.endMin = next;
-      }
-    }
+    const next = (event.startMin + delta + MINUTES_IN_DAY) % MINUTES_IN_DAY;
+    applyStartChange(event, next, delta);
     persistState();
     render();
   }
@@ -698,11 +686,7 @@
           persistState();
           renderNextEventLabel();
         });
-        const durationLabel = document.createElement('span');
-        durationLabel.className = 'text-muted';
-        durationLabel.textContent = formatDuration(minutesDiff(evt.startMin, evt.endMin));
         titleWrap.appendChild(titleInput);
-        titleWrap.appendChild(durationLabel);
 
         const timeButton = document.createElement('button');
         timeButton.className = 'day-item__time';
@@ -710,10 +694,10 @@
         timeButton.setAttribute('aria-label', `Edit time for ${evt.title}`);
         const timeRange = document.createElement('span');
         timeRange.className = 'day-item__time-range';
-        timeRange.textContent = `${minutesToLabel(evt.startMin)} – ${minutesToLabel(evt.endMin)}`;
+        timeRange.textContent = minutesToLabel(evt.startMin);
         const timeHint = document.createElement('span');
         timeHint.className = 'day-item__time-hint';
-        timeHint.textContent = 'Edit';
+        timeHint.textContent = 'Edit start';
         timeButton.appendChild(timeRange);
         timeButton.appendChild(timeHint);
         const isEditing = state.openEditorId === evt.id;
@@ -767,7 +751,6 @@
     editor.setAttribute('role', 'group');
 
     const startField = createTimeField('Start', minutesToTime(evt.startMin));
-    const endField = createTimeField('End', minutesToTime(evt.endMin));
 
     const saveBtn = document.createElement('button');
     saveBtn.className = 'btn btn-primary';
@@ -775,13 +758,8 @@
     saveBtn.textContent = 'Save';
     saveBtn.addEventListener('click', () => {
       const start = toMinutes(startField.input.value);
-      const end = toMinutes(endField.input.value);
-      if (minutesDiff(start, end) < MIN_EVENT_DURATION) {
-        showToast('Event must be at least 10 minutes long', 'error');
-        return;
-      }
-      evt.startMin = start;
-      evt.endMin = end;
+      const delta = signedDelta(evt.startMin, start);
+      applyStartChange(evt, start, delta);
       state.openEditorId = null;
       persistState();
       render();
@@ -802,7 +780,6 @@
     actions.appendChild(cancelBtn);
 
     editor.appendChild(startField.field);
-    editor.appendChild(endField.field);
     editor.appendChild(actions);
 
     requestAnimationFrame(() => startField.input.focus());
@@ -827,7 +804,7 @@
 
   function addEventFromTemplate(template, startMinutes) {
     const eventStart = typeof startMinutes === 'number' ? startMinutes : guessOpenMinute();
-    const event = createEvent(template.type, template.title, eventStart, (eventStart + template.duration) % MINUTES_IN_DAY);
+    const event = createEvent(template.type, template.title, eventStart, template.duration);
     state.events.push(event);
     state.selectedId = event.id;
     persistState();
@@ -846,7 +823,9 @@
   function guessOpenMinute() {
     if (!state.events.length) return toMinutes('09:00');
     const sorted = state.events.slice().sort((a, b) => a.startMin - b.startMin);
-    return (sorted[sorted.length - 1].endMin + 30) % MINUTES_IN_DAY;
+    const last = sorted[sorted.length - 1];
+    const duration = typeof last.duration === 'number' ? last.duration : eventTypes[last.type]?.defaultDuration || 60;
+    return (last.startMin + duration + 30) % MINUTES_IN_DAY;
   }
 
   function renderNextEventLabel() {
@@ -1078,6 +1057,15 @@
     return svg;
   }
 
+  function splitEvent(start, end) {
+    if (start === end) return [[start, (end + MINUTES_IN_DAY - 1) % MINUTES_IN_DAY]];
+    if (end > start) return [[start, end]];
+    return [
+      [start, MINUTES_IN_DAY],
+      [0, end]
+    ];
+  }
+
   function setPlannerDirection(dir) {
     state.plannerDirection = dir;
     segmentBtns.forEach((btn) => btn.setAttribute('aria-checked', btn.dataset.dir === dir ? 'true' : 'false'));
@@ -1131,6 +1119,7 @@
     if (adjustmentCurveSelect) adjustmentCurveSelect.value = state.adjustmentCurve;
     segmentBtns.forEach((btn) => btn.setAttribute('aria-checked', btn.dataset.dir === state.plannerDirection ? 'true' : 'false'));
     if (shareIncludeEventsToggle) shareIncludeEventsToggle.checked = !!state.shareIncludeEvents;
+    if (lockWakeToggle) lockWakeToggle.checked = !!state.lockToWake;
   }
 
   function setFilter(filter) {
@@ -1140,7 +1129,7 @@
   }
 
   function handleRingPointerDown(evt) {
-    if (evt.target.closest('.arc-path') || evt.target.closest('.arc-handle')) return;
+    if (evt.target.closest('.event-dot')) return;
     state.selectedId = null;
     render();
   }
@@ -1271,7 +1260,7 @@
     state.timeZone = planner.timeZone || state.timeZone;
     const hasEvents = Array.isArray(snapshot.events);
     if (hasEvents) {
-      state.events = snapshot.events.map((evt) => ({ ...evt }));
+      state.events = snapshot.events.map((evt) => normalizeEvent(evt)).filter(Boolean);
     }
     state.shareIncludeEvents = hasEvents;
     persistState();
@@ -1430,6 +1419,15 @@
     updateOverrideUI();
   }
 
+  function initLockToggle() {
+    if (!lockWakeToggle) return;
+    lockWakeToggle.checked = !!state.lockToWake;
+    lockWakeToggle.addEventListener('change', (evt) => {
+      state.lockToWake = evt.target.checked;
+      persistState();
+    });
+  }
+
   function init() {
     loadState();
     loadSharedPlannerFromURL();
@@ -1444,6 +1442,7 @@
     initQuickAddMenu();
     initAdvancedAccordion();
     initOverrideControls();
+    initLockToggle();
     initShareControls();
     render();
     setInterval(() => {
