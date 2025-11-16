@@ -544,11 +544,15 @@
     });
   }
 
-  function applyStartChange(evt, newStart, deltaOverride) {
-    const delta = typeof deltaOverride === 'number' ? deltaOverride : signedDelta(evt.startMin, newStart);
+  function applyStartChange(evt, newStart, deltaOverride, options = {}) {
+    const previousStart = evt.startMin;
+    const delta = typeof deltaOverride === 'number' ? deltaOverride : signedDelta(previousStart, newStart);
     updateEventTiming(evt, newStart);
-    if (evt.type === 'wake' && state.lockToWake) {
+    if (evt.type === 'wake' && state.lockToWake && delta) {
       shiftLinkedEvents(delta, evt.id);
+      if (options.notifyLockShift) {
+        showToast(`${formatShiftMinutes(delta)} applied to linked events`, 'info');
+      }
     }
   }
 
@@ -759,7 +763,7 @@
     saveBtn.addEventListener('click', () => {
       const start = toMinutes(startField.input.value);
       const delta = signedDelta(evt.startMin, start);
-      applyStartChange(evt, start, delta);
+      applyStartChange(evt, start, delta, { notifyLockShift: evt.type === 'wake' });
       state.openEditorId = null;
       persistState();
       render();
@@ -1027,43 +1031,9 @@
       label.className = 'nudge-card__label';
       const shiftText = formatShiftMinutes(entry.shift || 0);
       label.innerHTML = `<strong>${entry.label}</strong><span class="text-muted">${shiftText} · Wake ${minutesToLabel(entry.wake)} · Sleep ${minutesToLabel(entry.sleep)}</span>`;
-      const mini = createMiniRing(entry);
       card.appendChild(label);
-      card.appendChild(mini);
       nudgeCardsEl.appendChild(card);
     });
-  }
-
-  function createMiniRing(entry) {
-    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-    svg.setAttribute('viewBox', '0 0 100 100');
-    svg.setAttribute('class', 'nudge-card__mini');
-    const center = 50;
-    const radius = 32;
-    const background = createSVG('circle', { cx: center, cy: center, r: radius, class: 'clock-backdrop' });
-    svg.appendChild(background);
-    const segments = splitEvent(entry.sleep, entry.wake);
-    segments.forEach(([start, end]) => {
-      const path = describeArc(
-        center,
-        center,
-        radius,
-        angleFromMinutes(start),
-        angleFromMinutes(end < start ? end + MINUTES_IN_DAY : end)
-      );
-      const arc = createSVG('path', { d: path, class: 'arc-path', stroke: getEventColor('sleep') });
-      svg.appendChild(arc);
-    });
-    return svg;
-  }
-
-  function splitEvent(start, end) {
-    if (start === end) return [[start, (end + MINUTES_IN_DAY - 1) % MINUTES_IN_DAY]];
-    if (end > start) return [[start, end]];
-    return [
-      [start, MINUTES_IN_DAY],
-      [0, end]
-    ];
   }
 
   function setPlannerDirection(dir) {
