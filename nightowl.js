@@ -682,7 +682,20 @@
 
   function handlePointerStart(evt) {
     evt.preventDefault();
-    const id = evt.currentTarget.getAttribute('data-event-id');
+    const target = evt.currentTarget;
+    if (target?.setPointerCapture) {
+      target.setPointerCapture(evt.pointerId);
+    }
+
+    if (dayRing) {
+      dayRing.classList.add('is-dragging');
+    }
+
+    if (document.documentElement) {
+      document.documentElement.classList.add('no-scroll');
+      document.body?.classList.add('no-scroll');
+    }
+    const id = target.getAttribute('data-event-id');
     state.pointerDrag = { id, lastStart: state.events.find((e) => e.id === id)?.startMin ?? null };
     selectEvent(id);
     document.addEventListener('pointermove', handlePointerMove);
@@ -709,6 +722,21 @@
   function handlePointerEnd(evt) {
     if (!state.pointerDrag) return;
     evt.preventDefault();
+    const target = evt.target;
+    if (target?.releasePointerCapture) {
+      try {
+        target.releasePointerCapture(evt.pointerId);
+      } catch (err) {
+        /* ignore */
+      }
+    }
+    if (dayRing) {
+      dayRing.classList.remove('is-dragging');
+    }
+    if (document.documentElement) {
+      document.documentElement.classList.remove('no-scroll');
+      document.body?.classList.remove('no-scroll');
+    }
     state.pointerDrag = null;
     document.removeEventListener('pointermove', handlePointerMove);
     document.removeEventListener('pointerup', handlePointerEnd);
@@ -1355,12 +1383,22 @@
     return { code, url: url.toString() };
   }
 
+  function formatShareCodePreview(code) {
+    if (!code) return '';
+    if (code.length <= 120) return code;
+    return `${code.slice(0, 60)}…${code.slice(-16)}`;
+  }
+
   function updateShareDialog() {
     if (!shareLayer) return;
     state.shareIncludeEvents = Boolean(shareIncludeEventsToggle?.checked);
     const { code, url } = generateShareLink(state.shareIncludeEvents);
     if (shareLinkInput) shareLinkInput.value = url;
-    if (shareCode) shareCode.textContent = code;
+    if (shareCode) {
+      shareCode.textContent = formatShareCodePreview(code);
+      shareCode.dataset.fullCode = code;
+      shareCode.setAttribute('title', code);
+    }
     persistState();
   }
 
@@ -1381,7 +1419,8 @@
   }
 
   function handleShareCopyCode() {
-    if (shareCode && shareCode.textContent) copyText(shareCode.textContent, 'Code copied');
+    const code = shareCode?.dataset.fullCode || shareCode?.textContent;
+    if (code) copyText(code, 'Code copied');
   }
 
   function handleSavePlanner() {
