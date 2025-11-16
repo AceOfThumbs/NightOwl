@@ -355,6 +355,29 @@ textarea {
 .list-controls {
   display: flex;
   gap: var(--space-2);
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  background: var(--card-alt);
+  border: 1px solid var(--muted);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.toggle input {
+  width: 18px;
+  height: 18px;
+}
+
+.toggle__label {
+  font-weight: 600;
+  color: var(--text-1);
 }
 
 .day-list {
@@ -775,62 +798,52 @@ select {
   min-height: 40px;
 }
 
-.arc-handle {
-  fill: var(--accent);
-  stroke: #050810;
-  stroke-width: 2;
-  cursor: grab;
-  pointer-events: all;
-  touch-action: none;
-}
 
-.arc-handle:focus-visible {
-  outline: none;
-  stroke: var(--ring);
+.event-dot {
+  fill: #050810;
   stroke-width: 4;
+  cursor: grab;
+  touch-action: none;
 }
 
 .arc-path {
   fill: none;
   stroke-linecap: round;
-  stroke-width: 16;
-  cursor: pointer;
-  filter: drop-shadow(0 2px 8px rgba(0, 0, 0, 0.45));
-  touch-action: pan-y pinch-zoom;
+  stroke-width: 12;
 }
 
-.arc-path[data-type="sleep"] {
+.event-dot[data-type="sleep"] {
   stroke: var(--sleep);
-  stroke-width: 28;
 }
 
-.arc-path[data-type="meal"] {
+.event-dot[data-type="meal"] {
   stroke: var(--meal);
 }
 
-.arc-path[data-type="exercise"] {
+.event-dot[data-type="exercise"] {
   stroke: var(--exercise);
 }
 
-.arc-path[data-type="work"] {
+.event-dot[data-type="work"] {
   stroke: var(--work);
 }
 
-.arc-path[data-type="light"] {
+.event-dot[data-type="light"] {
   stroke: var(--light);
 }
 
-.arc-path[data-type="wake"] {
+.event-dot[data-type="wake"] {
   stroke: var(--wake);
 }
 
-.arc-path[data-selected="true"] {
-  filter: drop-shadow(0 0 0 var(--ring));
-  stroke-width: 20;
+.event-dot:focus-visible {
+  outline: none;
+  stroke-width: 6;
+  filter: drop-shadow(0 0 0 3px var(--ring));
 }
 
-.arc-handle[data-selected="true"] {
-  transform: scale(1.1);
+.event-dot[data-selected="true"] {
+  filter: drop-shadow(0 0 0 3px var(--ring));
 }
 
 .clock-daylight {
