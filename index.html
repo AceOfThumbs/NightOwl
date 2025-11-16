@@ -114,6 +114,11 @@
               <span id="dailyStepHint" class="text-muted">Max change per day applied to target wake/sleep.</span>
             </label>
           </div>
+          <div class="nudge-actions" role="group" aria-label="Planner actions">
+            <button id="loadPlanner" class="btn btn-secondary" type="button">Load</button>
+            <button id="savePlanner" class="btn btn-secondary" type="button">Save</button>
+            <button id="sharePlanner" class="btn btn-primary" type="button">Share</button>
+          </div>
           <div class="nudge-cards" id="nudgeCards" aria-live="polite"></div>
         </section>
       </main>
@@ -146,6 +151,13 @@
           <button type="button" class="share-dialog__close" data-share-close aria-label="Close share dialog">×</button>
           <h2 id="shareDialogTitle">Share your plan</h2>
           <p class="text-muted">Send this link to share your current schedule. Anyone with the link can load these settings.</p>
+          <label class="share-dialog__option">
+            <input id="shareIncludeEvents" type="checkbox" />
+            <div>
+              <div class="share-dialog__option-title">Include day events</div>
+              <div class="text-muted">Share your event timeline along with Nudge Planner settings.</div>
+            </div>
+          </label>
           <label class="field">
             <span class="field-label">Share link</span>
             <input id="shareLinkInput" class="share-dialog__input" type="text" readonly />
