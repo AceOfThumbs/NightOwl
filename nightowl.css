@@ -608,25 +608,15 @@ select {
   border: 1px solid var(--muted);
   padding: var(--space-3);
   display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: var(--space-3);
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-2);
 }
 
 .nudge-card__label {
   display: flex;
   flex-direction: column;
   gap: var(--space-1);
-}
-
-.nudge-card__mini {
-  width: 72px;
-  height: 72px;
-}
-
-.nudge-card__mini .arc-path {
-  stroke-width: 12;
-  filter: none;
 }
 
 .nudge-actions {
