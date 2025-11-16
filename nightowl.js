@@ -20,6 +20,7 @@
   const addDayItemBtn = $('addDayItem');
   const filterChips = Array.from(document.querySelectorAll('.chip'));
   const timezoneToggle = $('timezoneToggle');
+  const timeFormatToggle = $('timeFormatToggle');
   const timeZoneSelect = $('timeZone');
   const targetDateInput = $('targetDate');
   const plannerModeSelect = $('plannerMode');
@@ -136,6 +137,7 @@
     nudgePlan: [],
     textScale: 1,
     theme: document.documentElement.getAttribute('data-theme') || 'dark',
+    timeFormat: '24h',
     overrideNow: null,
     shareIncludeEvents: false,
     lockToWake: true
@@ -182,10 +184,19 @@
   }
 
   function minutesToLabel(mins) {
+    return formatMinutes(mins, { includePeriod: true });
+  }
+
+  function formatMinutes(mins, { includePeriod = true } = {}) {
     const m = ((mins % MINUTES_IN_DAY) + MINUTES_IN_DAY) % MINUTES_IN_DAY;
-    const hours = Math.floor(m / 60);
+    const hours24 = Math.floor(m / 60);
     const minutes = pad(m % 60);
-    return `${hours === 0 ? 12 : hours > 12 ? hours - 12 : hours}:${minutes} ${hours < 12 ? 'AM' : 'PM'}`;
+    if (state.timeFormat === '12h') {
+      const hours12 = hours24 % 12 || 12;
+      const period = hours24 < 12 ? 'AM' : 'PM';
+      return includePeriod ? `${hours12}:${minutes} ${period}` : `${hours12}:${minutes}`;
+    }
+    return `${pad(hours24)}:${minutes}`;
   }
 
   function minutesDiff(start, end) {
@@ -239,6 +250,7 @@
         state.plannerMode = prefs.plannerMode || state.plannerMode;
         state.plannerDirection = prefs.plannerDirection || state.plannerDirection;
         state.adjustmentCurve = prefs.adjustmentCurve === 'curved' ? 'curved' : 'linear';
+        state.timeFormat = prefs.timeFormat === '12h' ? '12h' : '24h';
         state.shareIncludeEvents = Boolean(prefs.shareIncludeEvents);
         state.lockToWake = prefs.lockToWake !== false;
       }
@@ -275,6 +287,7 @@
         plannerMode: state.plannerMode,
         plannerDirection: state.plannerDirection,
         adjustmentCurve: state.adjustmentCurve,
+        timeFormat: state.timeFormat,
         shareIncludeEvents: state.shareIncludeEvents,
         lockToWake: state.lockToWake
       })
@@ -300,6 +313,16 @@
 
   function angleFromMinutes(mins) {
     return (mins / MINUTES_IN_DAY) * 360;
+  }
+
+  function formatHourTick(hour) {
+    const hours24 = ((hour % 24) + 24) % 24;
+    if (state.timeFormat === '12h') {
+      const labelHour = hours24 % 12 || 12;
+      const suffix = hours24 < 12 ? 'am' : 'pm';
+      return `${labelHour}${suffix}`;
+    }
+    return pad(hours24);
   }
 
   function describeArc(cx, cy, r, startAngle, endAngle) {
@@ -401,12 +424,51 @@
 
   function updateTimezoneToggle() {
     const tzLabel = timezoneLocations[state.timeZone]?.label || 'Local';
-    timezoneToggle.textContent = `${tzLabel} · 24h`;
+    timezoneToggle.textContent = tzLabel;
+  }
+
+  function setTimeFormat(format) {
+    state.timeFormat = format === '12h' ? '12h' : '24h';
+    updateTimeFormatToggle();
+    persistState();
+    render();
+  }
+
+  function toggleTimeFormat() {
+    setTimeFormat(state.timeFormat === '24h' ? '12h' : '24h');
+  }
+
+  function updateTimeFormatToggle() {
+    if (!timeFormatToggle) return;
+    const label = state.timeFormat === '24h' ? '24-hour' : '12-hour';
+    timeFormatToggle.textContent = label;
+    timeFormatToggle.setAttribute('aria-pressed', state.timeFormat === '12h' ? 'true' : 'false');
   }
 
   function getEventColor(type) {
     const key = eventTypes[type]?.colorKey || 'wake';
     return getComputedStyle(document.documentElement).getPropertyValue(`--${key}`).trim();
+  }
+
+  function getAnchorEvents() {
+    const wake = state.events
+      .filter((evt) => evt.type === 'wake')
+      .slice()
+      .sort((a, b) => a.startMin - b.startMin)[0];
+    const sleep = state.events
+      .filter((evt) => evt.type === 'sleep')
+      .slice()
+      .sort((a, b) => a.startMin - b.startMin)[0];
+    return { wake, sleep };
+  }
+
+  function getSleepWindow() {
+    const { wake, sleep } = getAnchorEvents();
+    const fallbackDuration = eventTypes.sleep.defaultDuration;
+    const duration = sleep ? minutesDiff(sleep.startMin, sleep.endMin) : fallbackDuration;
+    const start = sleep ? sleep.startMin : wake ? (wake.startMin - duration + MINUTES_IN_DAY) % MINUTES_IN_DAY : toMinutes('23:00');
+    const end = wake ? wake.startMin : (start + duration) % MINUTES_IN_DAY;
+    return { start, end, duration };
   }
 
   function render() {
@@ -447,6 +509,18 @@
       }
     }
 
+    const sleepWindow = getSleepWindow();
+    if (sleepWindow) {
+      const { start, end, duration } = sleepWindow;
+      const startAngle = angleFromMinutes(start);
+      const endAngle = startAngle + (duration / MINUTES_IN_DAY) * 360;
+      const sleepArc = createSVG('path', {
+        d: describeArc(center, center, radius - 10, startAngle, endAngle),
+        class: 'clock-sleep-window'
+      });
+      dayRing.appendChild(sleepArc);
+    }
+
     for (let h = 0; h < 24; h++) {
       const angle = (h / 24) * 360;
       const cos = Math.cos(((angle - 90) * Math.PI) / 180);
@@ -464,7 +538,7 @@
         y: center + sin * (radius + 32) + 4,
         class: 'clock-hour-number'
       });
-      label.textContent = pad(h);
+      label.textContent = formatHourTick(h);
       dayRing.appendChild(label);
     }
 
@@ -497,8 +571,8 @@
   }
 
   function updateClockLabels(nowMinutes, feelsMinutes) {
-    nowLabel.textContent = `Now · ${minutesToTime(nowMinutes)}`;
-    feelsLikeLabel.textContent = `Feels like ${minutesToTime(feelsMinutes)}`;
+    nowLabel.textContent = `Now · ${formatMinutes(nowMinutes)}`;
+    feelsLikeLabel.textContent = `Feels like ${formatMinutes(feelsMinutes)}`;
   }
 
   function renderEventDots(center, radius) {
@@ -979,7 +1053,7 @@
   }
 
   function renderNudgePlan() {
-    const sleepEvent = state.events.find((evt) => evt.type === 'sleep');
+    const { wake: wakeEvent, sleep: sleepEvent } = getAnchorEvents();
     if (!sleepEvent) {
       nudgeCardsEl.innerHTML = '<p class="text-muted">Add a sleep block to enable nudges.</p>';
       state.nudgePlan = [];
@@ -987,10 +1061,10 @@
       return;
     }
 
-    const currentStart = sleepEvent.startMin;
-    const currentEnd = sleepEvent.endMin;
-    const sleepDuration = minutesDiff(currentStart, currentEnd);
-    const reference = state.plannerMode === 'wake' ? currentEnd : currentStart;
+    const sleepWindow = getSleepWindow();
+    const sleepDuration = sleepWindow.duration;
+    const currentWake = wakeEvent ? wakeEvent.startMin : sleepWindow.end;
+    const reference = state.plannerMode === 'wake' ? currentWake : sleepWindow.start;
     const targetMinutes = toMinutes(state.targetTime);
     let diff = ((targetMinutes - reference + MINUTES_IN_DAY) % MINUTES_IN_DAY + MINUTES_IN_DAY) % MINUTES_IN_DAY;
     if (diff > MINUTES_IN_DAY / 2) diff -= MINUTES_IN_DAY;
@@ -1002,7 +1076,10 @@
     const targetDate = parseLocalDate(state.targetDate) || today;
     const direction = targetDate >= today ? 1 : -1;
     const dayMs = 24 * 60 * 60 * 1000;
-    const totalDays = Math.abs(Math.round((targetDate - today) / dayMs)) + 1;
+    const startDate = new Date(today);
+    if (targetDate > today) startDate.setDate(startDate.getDate() + 1);
+    else if (targetDate < today) startDate.setDate(startDate.getDate() - 1);
+    const totalDays = Math.abs(Math.round((targetDate - startDate) / dayMs)) + 1;
     const easeFn = state.adjustmentCurve === 'curved' ? easeInOut : easeLinear;
     const shouldRoundEase = true; // Round to whole minutes for all adjustment curves
     const cumulativeTargets = [];
@@ -1015,7 +1092,6 @@
 
     let appliedShift = 0;
     const plan = [];
-    const startDate = new Date(today);
 
     for (let i = 0; i < totalDays; i++) {
       const dayDate = new Date(startDate);
@@ -1208,7 +1284,8 @@
         targetDate: state.targetDate,
         dailyStep: state.dailyStep,
         adjustmentCurve: state.adjustmentCurve,
-        timeZone: state.timeZone
+        timeZone: state.timeZone,
+        timeFormat: state.timeFormat
       },
       events: includeEvents ? state.events.map((evt) => ({ ...evt })) : undefined
     };
@@ -1256,6 +1333,7 @@
     state.dailyStep = clamp(Number(planner.dailyStep) || state.dailyStep, 5, 120);
     state.adjustmentCurve = planner.adjustmentCurve === 'curved' ? 'curved' : 'linear';
     state.timeZone = planner.timeZone || state.timeZone;
+    state.timeFormat = planner.timeFormat === '12h' ? '12h' : state.timeFormat;
     const hasEvents = Array.isArray(snapshot.events);
     if (hasEvents) {
       state.events = snapshot.events.map((evt) => normalizeEvent(evt)).filter(Boolean);
@@ -1265,6 +1343,7 @@
     persistState();
     syncPlannerControls();
     setTimezone(state.timeZone);
+    updateTimeFormatToggle();
     render();
   }
 
@@ -1412,6 +1491,11 @@
     });
   }
 
+  function initTimeFormatControls() {
+    updateTimeFormatToggle();
+    if (timeFormatToggle) timeFormatToggle.addEventListener('click', toggleTimeFormat);
+  }
+
   function initOverrideControls() {
     applyOverrideBtn.addEventListener('click', applyOverride);
     clearOverrideBtn.addEventListener('click', clearOverride);
@@ -1434,6 +1518,7 @@
     initTextScaling();
     initThemeButtons();
     initTimezoneControls();
+    initTimeFormatControls();
     initPlannerControls();
     initFilterChips();
     initSegmentControl();
