@@ -80,14 +80,14 @@
   };
 
   const quickAddTemplates = [
-    { type: 'sleep', title: 'Sleep', duration: 8 * 60 },
+    { type: 'wake', title: 'Wake', duration: 30 },
     { type: 'meal', title: 'Breakfast', duration: 30 },
+    { type: 'work', title: 'Work', duration: 8 * 60 },
     { type: 'meal', title: 'Lunch', duration: 60 },
-    { type: 'meal', title: 'Dinner', duration: 45 },
     { type: 'exercise', title: 'Exercise', duration: 60 },
-    { type: 'light', title: 'Bright-light block', duration: 30 },
+    { type: 'meal', title: 'Dinner', duration: 45 },
     { type: 'custom', title: 'Note', duration: 30 },
-    { type: 'work', title: 'Work', duration: 8 * 60 }
+    { type: 'sleep', title: 'Sleep', duration: 8 * 60 }
   ];
 
   const defaultEvents = () => [
@@ -99,6 +99,25 @@
     createEvent('exercise', 'Exercise', toMinutes('18:00'), 60),
     createEvent('meal', 'Dinner', toMinutes('19:30'), 45)
   ];
+
+  function countEventsByType(type) {
+    return state.events.filter((evt) => evt.type === type).length;
+  }
+
+  function ensureAnchorEvents() {
+    let added = false;
+    if (!state.events.some((evt) => evt.type === 'wake')) {
+      state.events.push(createEvent('wake', 'Wake', toMinutes('07:00'), eventTypes.wake.defaultDuration));
+      added = true;
+    }
+    if (!state.events.some((evt) => evt.type === 'sleep')) {
+      const start = toMinutes('23:00');
+      const end = toMinutes('07:00');
+      state.events.push(createEvent('sleep', 'Sleep', start, minutesDiff(start, end)));
+      added = true;
+    }
+    return added;
+  }
 
   const state = {
     events: [],
@@ -236,6 +255,10 @@
       }
     } catch (err) {
       console.warn('Failed to load override', err);
+    }
+
+    if (ensureAnchorEvents()) {
+      persistState();
     }
   }
 
@@ -817,6 +840,13 @@
   }
 
   function removeEvent(id) {
+    const target = state.events.find((evt) => evt.id === id);
+    if (!target) return;
+    if ((target.type === 'wake' || target.type === 'sleep') && countEventsByType(target.type) <= 1) {
+      showToast('Keep at least one Wake and one Sleep event in your day.', 'error');
+      return;
+    }
+
     state.events = state.events.filter((evt) => evt.id !== id);
     if (state.selectedId === id) state.selectedId = null;
     if (state.openEditorId === id) state.openEditorId = null;
@@ -974,7 +1004,7 @@
     const dayMs = 24 * 60 * 60 * 1000;
     const totalDays = Math.abs(Math.round((targetDate - today) / dayMs)) + 1;
     const easeFn = state.adjustmentCurve === 'curved' ? easeInOut : easeLinear;
-    const shouldRoundEase = state.adjustmentCurve === 'curved';
+    const shouldRoundEase = true; // Round to whole minutes for all adjustment curves
     const cumulativeTargets = [];
 
     for (let i = 0; i < totalDays; i++) {
@@ -1106,23 +1136,21 @@
 
   function initQuickAddMenu() {
     if (!addDayItemBtn) return;
-    const menu = document.createElement('div');
-    menu.className = 'quick-add-menu';
-    menu.style.display = 'none';
-    quickAddTemplates.forEach((template) => {
-      const btn = document.createElement('button');
-      btn.type = 'button';
-      btn.className = 'btn btn-secondary';
-      btn.textContent = `${eventTypes[template.type]?.icon || '⭐'} ${template.title}`;
-      btn.addEventListener('click', () => {
-        menu.style.display = 'none';
-        addEventFromTemplate(template);
-      });
-      menu.appendChild(btn);
+    const select = document.createElement('select');
+    select.id = 'quickAddSelect';
+    select.className = 'quick-add-select';
+    select.setAttribute('aria-label', 'Event type');
+    quickAddTemplates.forEach((template, index) => {
+      const option = document.createElement('option');
+      option.value = String(index);
+      option.textContent = `${eventTypes[template.type]?.icon || '⭐'} ${template.title}`;
+      select.appendChild(option);
     });
-    addDayItemBtn.insertAdjacentElement('afterend', menu);
+    addDayItemBtn.insertAdjacentElement('beforebegin', select);
     addDayItemBtn.addEventListener('click', () => {
-      menu.style.display = menu.style.display === 'none' ? 'grid' : 'none';
+      const selectedIndex = Number(select.value) || 0;
+      const template = quickAddTemplates[selectedIndex] || quickAddTemplates[0];
+      if (template) addEventFromTemplate(template);
     });
   }
 
@@ -1232,6 +1260,7 @@
     if (hasEvents) {
       state.events = snapshot.events.map((evt) => normalizeEvent(evt)).filter(Boolean);
     }
+    ensureAnchorEvents();
     state.shareIncludeEvents = hasEvents;
     persistState();
     syncPlannerControls();
