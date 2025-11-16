@@ -736,6 +736,24 @@ select {
   flex-wrap: wrap;
 }
 
+.share-dialog__option {
+  display: flex;
+  gap: var(--space-3);
+  align-items: flex-start;
+  padding: var(--space-3);
+  background: var(--card-alt);
+  border: 1px solid var(--muted);
+  border-radius: var(--radius-md);
+}
+
+.share-dialog__option input {
+  margin-top: 4px;
+}
+
+.share-dialog__option-title {
+  font-weight: 600;
+}
+
 .share-code {
   font-family: "SFMono-Regular", Menlo, Consolas, monospace;
   background: var(--card-alt);

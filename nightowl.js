@@ -11,6 +11,8 @@
   const MAX_TEXT_SCALE = 1.35;
   const MIN_TEXT_SCALE = 0.85;
   const TEXT_SCALE_STEP = 0.1;
+  const SHARE_PARAM = 'planner';
+  const SAVED_PLANNER_KEY = 'nightowl.savedPlanner.v1';
 
   const $ = (id) => document.getElementById(id);
   const dayRing = $('dayRing');
@@ -41,6 +43,16 @@
   const clearOverrideBtn = $('clearOverride');
   const overrideStatus = $('overrideStatus');
   const toastContainer = $('toastContainer');
+  const shareLayer = $('shareLayer');
+  const shareLinkInput = $('shareLinkInput');
+  const shareCopyLinkBtn = $('shareCopyLink');
+  const shareCopyCodeBtn = $('shareCopyCode');
+  const shareCode = $('shareCode');
+  const shareIncludeEventsToggle = $('shareIncludeEvents');
+  const sharePlannerBtn = $('sharePlanner');
+  const savePlannerBtn = $('savePlanner');
+  const loadPlannerBtn = $('loadPlanner');
+  const shareCloseEls = Array.from(document.querySelectorAll('[data-share-close]'));
 
   const timezoneLocations = {
     local: { label: 'Local', lat: 40.7128, lon: -74.006 },
@@ -105,7 +117,8 @@
     nudgePlan: [],
     textScale: 1,
     theme: document.documentElement.getAttribute('data-theme') || 'dark',
-    overrideNow: null
+    overrideNow: null,
+    shareIncludeEvents: false
   };
 
   state.targetDate = todayISO();
@@ -191,6 +204,7 @@
         state.plannerMode = prefs.plannerMode || state.plannerMode;
         state.plannerDirection = prefs.plannerDirection || state.plannerDirection;
         state.adjustmentCurve = prefs.adjustmentCurve === 'curved' ? 'curved' : 'linear';
+        state.shareIncludeEvents = Boolean(prefs.shareIncludeEvents);
       }
     } catch (err) {
       console.warn('Failed to load prefs', err);
@@ -220,7 +234,8 @@
         dailyStep: state.dailyStep,
         plannerMode: state.plannerMode,
         plannerDirection: state.plannerDirection,
-        adjustmentCurve: state.adjustmentCurve
+        adjustmentCurve: state.adjustmentCurve,
+        shareIncludeEvents: state.shareIncludeEvents
       })
     );
     if (state.overrideNow) {
@@ -976,11 +991,13 @@
     const dayMs = 24 * 60 * 60 * 1000;
     const totalDays = Math.abs(Math.round((targetDate - today) / dayMs)) + 1;
     const easeFn = state.adjustmentCurve === 'curved' ? easeInOut : easeLinear;
+    const shouldRoundEase = state.adjustmentCurve === 'curved';
     const cumulativeTargets = [];
 
     for (let i = 0; i < totalDays; i++) {
       const progress = totalDays === 1 ? 1 : (i + 1) / totalDays;
-      cumulativeTargets[i] = diff * easeFn(progress);
+      const value = diff * easeFn(progress);
+      cumulativeTargets[i] = shouldRoundEase ? Math.round(value) : value;
     }
 
     let appliedShift = 0;
@@ -991,22 +1008,24 @@
       const dayDate = new Date(startDate);
       dayDate.setDate(startDate.getDate() + i * direction);
       let targetShift = cumulativeTargets[i] - appliedShift;
+      if (shouldRoundEase) targetShift = Math.round(targetShift);
       let shift;
 
       if (i === totalDays - 1) {
         shift = diff - appliedShift;
-        appliedShift = diff;
       } else if (Math.abs(targetShift) > step) {
         shift = Math.sign(targetShift) * step;
-        appliedShift += shift;
         const overshoot = targetShift - shift;
         for (let j = i + 1; j < cumulativeTargets.length; j++) {
           cumulativeTargets[j] -= overshoot;
         }
       } else {
         shift = targetShift;
-        appliedShift += shift;
       }
+
+      if (shouldRoundEase) shift = Math.round(shift);
+
+      appliedShift += shift;
 
       const running = (reference + appliedShift + MINUTES_IN_DAY) % MINUTES_IN_DAY;
       const wake = state.plannerMode === 'wake' ? running : (running + sleepDuration) % MINUTES_IN_DAY;
@@ -1102,6 +1121,18 @@
     renderNudgePlan();
   }
 
+  function syncPlannerControls() {
+    plannerModeSelect.value = state.plannerMode;
+    plannerModeLabel.textContent = state.plannerMode === 'wake' ? 'wake' : 'sleep';
+    targetTimeInput.value = state.targetTime;
+    targetDateInput.value = state.targetDate;
+    dailyStepRange.value = state.dailyStep;
+    dailyStepLabel.textContent = `±${state.dailyStep} min`;
+    if (adjustmentCurveSelect) adjustmentCurveSelect.value = state.adjustmentCurve;
+    segmentBtns.forEach((btn) => btn.setAttribute('aria-checked', btn.dataset.dir === state.plannerDirection ? 'true' : 'false'));
+    if (shareIncludeEventsToggle) shareIncludeEventsToggle.checked = !!state.shareIncludeEvents;
+  }
+
   function setFilter(filter) {
     state.activeFilter = filter;
     filterChips.forEach((chip) => chip.classList.toggle('chip-active', chip.dataset.filter === filter));
@@ -1169,6 +1200,176 @@
     showToast('Override cleared', 'info');
   }
 
+  function copyText(value, message) {
+    if (!navigator.clipboard) {
+      showToast('Clipboard access unavailable', 'error');
+      return;
+    }
+    navigator.clipboard
+      .writeText(value)
+      .then(() => showToast(message, 'success'))
+      .catch(() => showToast('Unable to copy to clipboard', 'error'));
+  }
+
+  function buildPlannerSnapshot(includeEvents) {
+    return {
+      version: 1,
+      planner: {
+        plannerMode: state.plannerMode,
+        plannerDirection: state.plannerDirection,
+        targetTime: state.targetTime,
+        targetDate: state.targetDate,
+        dailyStep: state.dailyStep,
+        adjustmentCurve: state.adjustmentCurve,
+        timeZone: state.timeZone
+      },
+      events: includeEvents ? state.events.map((evt) => ({ ...evt })) : undefined
+    };
+  }
+
+  function encodeSharePayload(includeEvents) {
+    try {
+      const json = JSON.stringify(buildPlannerSnapshot(includeEvents));
+      return btoa(encodeURIComponent(json));
+    } catch (err) {
+      console.warn('Failed to encode share payload', err);
+      return '';
+    }
+  }
+
+  function decodeSharePayload(payload) {
+    if (!payload) return null;
+    try {
+      const json = decodeURIComponent(atob(payload));
+      return JSON.parse(json);
+    } catch (err) {
+      console.warn('Failed to decode shared planner', err);
+      return null;
+    }
+  }
+
+  function extractShareCode(input) {
+    const trimmed = (input || '').trim();
+    if (!trimmed) return null;
+    try {
+      const maybeUrl = new URL(trimmed);
+      return maybeUrl.searchParams.get(SHARE_PARAM) || trimmed;
+    } catch (err) {
+      return trimmed;
+    }
+  }
+
+  function applySharedPlanner(snapshot) {
+    if (!snapshot || typeof snapshot !== 'object') throw new Error('Invalid snapshot');
+    const planner = snapshot.planner || snapshot;
+    state.plannerMode = planner.plannerMode || state.plannerMode;
+    state.plannerDirection = planner.plannerDirection || state.plannerDirection;
+    state.targetTime = planner.targetTime || state.targetTime;
+    state.targetDate = planner.targetDate || state.targetDate;
+    state.dailyStep = clamp(Number(planner.dailyStep) || state.dailyStep, 5, 120);
+    state.adjustmentCurve = planner.adjustmentCurve === 'curved' ? 'curved' : 'linear';
+    state.timeZone = planner.timeZone || state.timeZone;
+    const hasEvents = Array.isArray(snapshot.events);
+    if (hasEvents) {
+      state.events = snapshot.events.map((evt) => ({ ...evt }));
+    }
+    state.shareIncludeEvents = hasEvents;
+    persistState();
+    syncPlannerControls();
+    setTimezone(state.timeZone);
+    render();
+  }
+
+  function generateShareLink(includeEvents) {
+    const code = encodeSharePayload(includeEvents);
+    if (!code) return { code: '', url: '' };
+    const url = new URL(window.location.href);
+    url.searchParams.set(SHARE_PARAM, code);
+    return { code, url: url.toString() };
+  }
+
+  function updateShareDialog() {
+    if (!shareLayer) return;
+    state.shareIncludeEvents = Boolean(shareIncludeEventsToggle?.checked);
+    const { code, url } = generateShareLink(state.shareIncludeEvents);
+    if (shareLinkInput) shareLinkInput.value = url;
+    if (shareCode) shareCode.textContent = code;
+    persistState();
+  }
+
+  function openShareDialog() {
+    if (!shareLayer) return;
+    if (shareIncludeEventsToggle) shareIncludeEventsToggle.checked = !!state.shareIncludeEvents;
+    updateShareDialog();
+    shareLayer.hidden = false;
+    if (shareLinkInput) shareLinkInput.focus();
+  }
+
+  function closeShareDialog() {
+    if (shareLayer) shareLayer.hidden = true;
+  }
+
+  function handleShareCopyLink() {
+    if (shareLinkInput && shareLinkInput.value) copyText(shareLinkInput.value, 'Link copied');
+  }
+
+  function handleShareCopyCode() {
+    if (shareCode && shareCode.textContent) copyText(shareCode.textContent, 'Code copied');
+  }
+
+  function handleSavePlanner() {
+    const snapshot = buildPlannerSnapshot(true);
+    localStorage.setItem(SAVED_PLANNER_KEY, JSON.stringify(snapshot));
+    showToast('Planner saved in this browser', 'success');
+  }
+
+  function handleLoadPlanner() {
+    const saved = localStorage.getItem(SAVED_PLANNER_KEY);
+    if (saved) {
+      try {
+        applySharedPlanner(JSON.parse(saved));
+        showToast('Loaded saved planner', 'success');
+        return;
+      } catch (err) {
+        console.warn('Failed to load saved planner', err);
+      }
+    }
+
+    const input = window.prompt('Paste a shared NightOwl link or code to load a planner:');
+    if (!input) return;
+    const code = extractShareCode(input);
+    const snapshot = decodeSharePayload(code);
+    if (!snapshot) {
+      showToast('Unable to load planner', 'error');
+      return;
+    }
+    applySharedPlanner(snapshot);
+    showToast('Shared planner loaded', 'success');
+  }
+
+  function loadSharedPlannerFromURL() {
+    const params = new URLSearchParams(window.location.search);
+    const code = params.get(SHARE_PARAM);
+    if (!code) return;
+    const snapshot = decodeSharePayload(code);
+    if (!snapshot) {
+      showToast('Unable to load shared planner from link', 'error');
+      return;
+    }
+    applySharedPlanner(snapshot);
+    showToast('Loaded shared planner from link', 'success');
+  }
+
+  function initShareControls() {
+    if (sharePlannerBtn) sharePlannerBtn.addEventListener('click', openShareDialog);
+    if (savePlannerBtn) savePlannerBtn.addEventListener('click', handleSavePlanner);
+    if (loadPlannerBtn) loadPlannerBtn.addEventListener('click', handleLoadPlanner);
+    shareCloseEls.forEach((el) => el.addEventListener('click', closeShareDialog));
+    if (shareIncludeEventsToggle) shareIncludeEventsToggle.addEventListener('change', updateShareDialog);
+    if (shareCopyLinkBtn) shareCopyLinkBtn.addEventListener('click', handleShareCopyLink);
+    if (shareCopyCodeBtn) shareCopyCodeBtn.addEventListener('click', handleShareCopyCode);
+  }
+
   function initAdvancedAccordion() {
     advancedToggle.addEventListener('click', () => {
       const expanded = advancedToggle.getAttribute('aria-expanded') === 'true';
@@ -1207,14 +1408,7 @@
     if (targetDateInput) targetDateInput.addEventListener('change', (evt) => updateTargetDate(evt.target.value));
     if (dailyStepRange) dailyStepRange.addEventListener('input', (evt) => updateDailyStep(evt.target.value));
     if (adjustmentCurveSelect) adjustmentCurveSelect.addEventListener('change', (evt) => updateAdjustmentCurve(evt.target.value));
-    plannerModeSelect.value = state.plannerMode;
-    targetTimeInput.value = state.targetTime;
-    targetDateInput.value = state.targetDate;
-    dailyStepRange.value = state.dailyStep;
-    dailyStepLabel.textContent = `±${state.dailyStep} min`;
-    plannerModeLabel.textContent = state.plannerMode === 'wake' ? 'wake' : 'sleep';
-    if (adjustmentCurveSelect) adjustmentCurveSelect.value = state.adjustmentCurve;
-    segmentBtns.forEach((btn) => btn.setAttribute('aria-checked', btn.dataset.dir === state.plannerDirection ? 'true' : 'false'));
+    syncPlannerControls();
   }
 
   function initTimezoneControls() {
@@ -1238,6 +1432,7 @@
 
   function init() {
     loadState();
+    loadSharedPlannerFromURL();
     applyTheme(state.theme);
     initTextScaling();
     initThemeButtons();
@@ -1249,6 +1444,7 @@
     initQuickAddMenu();
     initAdvancedAccordion();
     initOverrideControls();
+    initShareControls();
     render();
     setInterval(() => {
       renderClock();
