@@ -33,8 +33,8 @@
           <header class="panel-head">
             <h2 id="clockTitle">Clock</h2>
             <div class="clock-meta" aria-live="polite">
-              <span class="clock-meta__now" id="nowLabel"></span>
               <span class="clock-meta__feels" id="feelsLikeLabel"></span>
+              <span class="clock-meta__now" id="nowLabel"></span>
             </div>
           </header>
           <div class="clock-stage">
@@ -62,18 +62,42 @@
         </section>
 
         <section class="panel panel-day" aria-labelledby="dayListTitle">
-          <header class="panel-head">
-            <h2 id="dayListTitle">Your Day</h2>
-            <p class="text-muted">Plan anchors for your day. Add items or drag them on the clock.</p>
+          <header class="panel-head panel-head--split">
+            <div>
+              <h2 id="dayListTitle">Standard Day</h2>
+              <p class="text-muted">Define your reference schedule. Drag items on the clock or edit times below.</p>
+            </div>
+            <div class="panel-actions">
+              <button id="resetStandardDay" class="btn btn-ghost" type="button">Reset</button>
+              <button
+                id="standardCollapseToggle"
+                class="btn btn-ghost"
+                type="button"
+                aria-expanded="true"
+                aria-controls="standardDayBody"
+              >
+                Collapse
+              </button>
+            </div>
           </header>
-          <div class="list-controls">
-            <label class="toggle">
-              <input id="lockWakeToggle" type="checkbox" checked />
-              <span class="toggle__label">Lock to Wake</span>
-            </label>
-            <button id="addDayItem" class="btn btn-primary" type="button">Add item</button>
+          <div id="standardDayBody">
+            <div class="list-controls">
+              <label class="toggle">
+                <input id="lockWakeToggle" type="checkbox" checked />
+                <span class="toggle__label">Lock to Wake</span>
+              </label>
+              <button id="addDayItem" class="btn btn-primary" type="button">Add item</button>
+            </div>
+            <ul id="dayList" class="day-list" aria-live="polite"></ul>
           </div>
-          <ul id="dayList" class="day-list" aria-live="polite"></ul>
+        </section>
+
+        <section class="panel panel-day" aria-labelledby="realDayTitle">
+          <header class="panel-head">
+            <h2 id="realDayTitle">Your Day (Real Time)</h2>
+            <p class="text-muted">See Standard Day events mapped to your current wake time.</p>
+          </header>
+          <ul id="realDayList" class="day-list day-list--readonly" aria-live="polite"></ul>
         </section>
 
         <section class="panel panel-nudge" aria-labelledby="nudgeTitle">
