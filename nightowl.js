@@ -58,12 +58,12 @@
   const savePlannerBtn = $('savePlanner');
   const loadPlannerBtn = $('loadPlanner');
   const shareCloseEls = Array.from(document.querySelectorAll('[data-share-close]'));
-  const standardCollapseToggle = $('standardCollapseToggle');
-  const standardDayBody = $('standardDayBody');
   const resetStandardDayBtn = $('resetStandardDay');
   const realDayList = $('realDayList');
   const yourDayWakeInput = $('yourDayWakeInput');
   const tabButtons = Array.from(document.querySelectorAll('[data-tab]'));
+  const yourDayTabPanel = $('yourDayTab');
+  const standardDayTabPanel = $('standardDayTab');
 
   const timezoneLocations = {
     local: { label: 'Local', lat: 40.7128, lon: -74.006 },
@@ -152,8 +152,6 @@
     shareIncludeEvents: false,
     lockToWake: true,
     standardWakeMinutes: toMinutes('07:00'),
-    standardCollapsed: false,
-    standardCollapsedNextDefault: false,
     yourDayWakeMinutes: toMinutes('07:00'),
     activeTab: 'your'
   };
@@ -262,7 +260,6 @@
     }
     try {
       const prefs = JSON.parse(localStorage.getItem(PREFS_KEY) || 'null');
-      const hasPrefs = !!prefs;
       if (prefs) {
         state.textScale = clamp(prefs.textScale ?? state.textScale, MIN_TEXT_SCALE, MAX_TEXT_SCALE);
         state.theme = prefs.theme === 'light' ? 'light' : 'dark';
@@ -278,15 +275,10 @@
         state.standardWakeMinutes = normalizeDayMinutes(
           typeof prefs.standardWakeMinutes === 'number' ? prefs.standardWakeMinutes : state.standardWakeMinutes
         );
-        state.standardCollapsed = prefs.standardCollapsed ?? true;
         state.yourDayWakeMinutes = normalizeDayMinutes(
           typeof prefs.yourDayWakeMinutes === 'number' ? prefs.yourDayWakeMinutes : state.yourDayWakeMinutes
         );
         state.activeTab = prefs.activeTab === 'standard' ? 'standard' : 'your';
-      }
-      if (!hasPrefs) {
-        state.standardCollapsed = false;
-        state.standardCollapsedNextDefault = true;
       }
     } catch (err) {
       console.warn('Failed to load prefs', err);
@@ -325,7 +317,6 @@
         shareIncludeEvents: state.shareIncludeEvents,
         lockToWake: state.lockToWake,
         standardWakeMinutes: state.standardWakeMinutes,
-        standardCollapsed: state.standardCollapsedNextDefault ? true : state.standardCollapsed,
         yourDayWakeMinutes: state.yourDayWakeMinutes,
         activeTab: state.activeTab
       })
@@ -538,7 +529,6 @@
     renderRealDayList();
     renderNudgePlan();
     renderNextEventLabels();
-    renderStandardDayCollapse();
     syncYourDayWakeInput();
   }
 
@@ -1285,14 +1275,6 @@
     });
   }
 
-  function renderStandardDayCollapse() {
-    if (!standardDayBody || !standardCollapseToggle) return;
-    const collapsed = !!state.standardCollapsed;
-    standardDayBody.hidden = collapsed;
-    standardCollapseToggle.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
-    standardCollapseToggle.textContent = collapsed ? 'Expand' : 'Collapse';
-  }
-
   function calculateSunTimes(timeZone) {
     const loc = timezoneLocations[timeZone] || timezoneLocations.local;
     const now = getNow();
@@ -1359,7 +1341,7 @@
   }
 
   function renderNudgePlan() {
-    const { wake: wakeEvent, sleep: sleepEvent } = getAnchorEvents();
+    const { sleep: sleepEvent } = getAnchorEvents();
     if (!sleepEvent) {
       nudgeCardsEl.innerHTML = '<p class="text-muted">Add a sleep block to enable nudges.</p>';
       state.nudgePlan = [];
@@ -1369,8 +1351,9 @@
 
     const sleepWindow = getSleepWindow();
     const sleepDuration = sleepWindow.duration;
-    const currentWake = wakeEvent ? wakeEvent.startMin : sleepWindow.end;
-    const reference = state.plannerMode === 'wake' ? currentWake : sleepWindow.start;
+    const currentWake = getYourDayWakeMinutes();
+    const shiftedSleepStart = mapStandardToRealMinutes(sleepWindow.start);
+    const reference = state.plannerMode === 'wake' ? currentWake : shiftedSleepStart;
     const targetMinutes = toMinutes(state.targetTime);
     let diff = ((targetMinutes - reference + MINUTES_IN_DAY) % MINUTES_IN_DAY + MINUTES_IN_DAY) % MINUTES_IN_DAY;
     if (diff > MINUTES_IN_DAY / 2) diff -= MINUTES_IN_DAY;
@@ -1838,6 +1821,8 @@
       const panel = panelId ? document.getElementById(panelId) : null;
       if (panel) panel.hidden = !isActive;
     });
+    if (yourDayTabPanel) yourDayTabPanel.hidden = state.activeTab !== 'your';
+    if (standardDayTabPanel) standardDayTabPanel.hidden = state.activeTab !== 'standard';
     persistState();
   }
 
@@ -1877,15 +1862,6 @@
   }
 
   function initStandardDayControls() {
-    renderStandardDayCollapse();
-    if (standardCollapseToggle) {
-      standardCollapseToggle.addEventListener('click', () => {
-        state.standardCollapsed = !state.standardCollapsed;
-        state.standardCollapsedNextDefault = false;
-        persistState();
-        renderStandardDayCollapse();
-      });
-    }
     if (resetStandardDayBtn) {
       resetStandardDayBtn.addEventListener('click', resetStandardDay);
     }
