@@ -226,6 +226,11 @@ textarea {
   gap: var(--space-3);
 }
 
+.panel-head h3 {
+  margin: 0;
+  font-size: clamp(1.05rem, 1.8vw, 1.35rem);
+}
+
 .panel-head--split {
   align-items: flex-start;
 }
@@ -250,6 +255,54 @@ textarea {
 
 .panel-nudge {
   grid-column: span 3;
+}
+
+.panel-tabs {
+  gap: var(--space-5);
+}
+
+.tab-list {
+  display: inline-flex;
+  gap: var(--space-2);
+  background: var(--card-alt);
+  border-radius: 999px;
+  padding: var(--space-2);
+  border: 1px solid var(--muted);
+}
+
+.tab {
+  border: none;
+  background: transparent;
+  color: var(--text-2);
+  padding: var(--space-2) var(--space-4);
+  border-radius: 999px;
+  cursor: pointer;
+  transition: background 160ms ease, color 160ms ease, transform 120ms ease;
+}
+
+.tab:hover,
+.tab:focus-visible {
+  background: var(--muted);
+  color: var(--text-1);
+  outline: none;
+}
+
+.tab-active {
+  background: var(--accent);
+  color: #03050a;
+  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.25);
+}
+
+.tab-panels {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.tab-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
 }
 
 .clock-stage {
@@ -603,6 +656,17 @@ textarea {
   gap: var(--space-1);
 }
 
+.field-inline {
+  flex-direction: row;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.field-inline input[type="time"] {
+  width: auto;
+  min-width: 120px;
+}
+
 .field-label {
   font-size: 0.75rem;
   text-transform: uppercase;
@@ -834,6 +898,52 @@ select {
   stroke-width: 4;
   cursor: grab;
   touch-action: none;
+}
+
+.your-day-marker {
+  stroke-linecap: round;
+  stroke-width: 10;
+  fill: none;
+  opacity: 0.9;
+  pointer-events: none;
+}
+
+.your-day-marker[data-type="sleep"] {
+  stroke: var(--sleep);
+}
+
+.your-day-marker[data-type="meal"] {
+  stroke: var(--meal);
+}
+
+.your-day-marker[data-type="exercise"] {
+  stroke: var(--exercise);
+}
+
+.your-day-marker[data-type="work"] {
+  stroke: var(--work);
+}
+
+.your-day-marker[data-type="light"] {
+  stroke: var(--light);
+}
+
+.your-day-marker[data-type="wake"] {
+  stroke: var(--wake);
+}
+
+.your-day-wake-dot {
+  fill: #050810;
+  stroke: var(--wake);
+  stroke-width: 4;
+  cursor: grab;
+  touch-action: none;
+}
+
+.your-day-wake-dot:focus-visible {
+  outline: none;
+  stroke-width: 6;
+  filter: drop-shadow(0 0 0 3px var(--ring));
 }
 
 .arc-path {

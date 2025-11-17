@@ -16,6 +16,8 @@
   const $ = (id) => document.getElementById(id);
   const dayRing = $('dayRing');
   const nextEventLabel = $('nextEventLabel');
+  const yourDayRing = $('yourDayRing');
+  const yourNextEventLabel = $('yourNextEventLabel');
   const dayList = $('dayList');
   const addDayItemBtn = $('addDayItem');
   const filterChips = Array.from(document.querySelectorAll('.chip'));
@@ -36,6 +38,8 @@
   const themeButtons = Array.from(document.querySelectorAll('[data-theme-choice]'));
   const nowLabel = $('nowLabel');
   const feelsLikeLabel = $('feelsLikeLabel');
+  const yourNowLabel = $('yourNowLabel');
+  const yourFeelsLikeLabel = $('yourFeelsLikeLabel');
   const advancedToggle = $('advancedToggle');
   const advancedBody = $('advancedBody');
   const overrideInput = $('overrideInput');
@@ -58,6 +62,8 @@
   const standardDayBody = $('standardDayBody');
   const resetStandardDayBtn = $('resetStandardDay');
   const realDayList = $('realDayList');
+  const yourDayWakeInput = $('yourDayWakeInput');
+  const tabButtons = Array.from(document.querySelectorAll('[data-tab]'));
 
   const timezoneLocations = {
     local: { label: 'Local', lat: 40.7128, lon: -74.006 },
@@ -147,8 +153,12 @@
     lockToWake: true,
     standardWakeMinutes: toMinutes('07:00'),
     standardCollapsed: false,
-    standardCollapsedNextDefault: false
+    standardCollapsedNextDefault: false,
+    yourDayWakeMinutes: toMinutes('07:00'),
+    activeTab: 'your'
   };
+
+  let yourDayPointerDrag = null;
 
   state.targetDate = todayISO();
 
@@ -269,6 +279,10 @@
           typeof prefs.standardWakeMinutes === 'number' ? prefs.standardWakeMinutes : state.standardWakeMinutes
         );
         state.standardCollapsed = prefs.standardCollapsed ?? true;
+        state.yourDayWakeMinutes = normalizeDayMinutes(
+          typeof prefs.yourDayWakeMinutes === 'number' ? prefs.yourDayWakeMinutes : state.yourDayWakeMinutes
+        );
+        state.activeTab = prefs.activeTab === 'standard' ? 'standard' : 'your';
       }
       if (!hasPrefs) {
         state.standardCollapsed = false;
@@ -311,7 +325,9 @@
         shareIncludeEvents: state.shareIncludeEvents,
         lockToWake: state.lockToWake,
         standardWakeMinutes: state.standardWakeMinutes,
-        standardCollapsed: state.standardCollapsedNextDefault ? true : state.standardCollapsed
+        standardCollapsed: state.standardCollapsedNextDefault ? true : state.standardCollapsed,
+        yourDayWakeMinutes: state.yourDayWakeMinutes,
+        activeTab: state.activeTab
       })
     );
     if (state.overrideNow) {
@@ -489,15 +505,20 @@
     return normalizeDayMinutes(typeof state.standardWakeMinutes === 'number' ? state.standardWakeMinutes : fallback);
   }
 
+  function getYourDayWakeMinutes() {
+    const fallback = getStandardWakeMinutes();
+    return normalizeDayMinutes(typeof state.yourDayWakeMinutes === 'number' ? state.yourDayWakeMinutes : fallback);
+  }
+
   function feelsLikeMinutes(nowMinutes) {
     const standardWake = getStandardWakeMinutes();
-    const wakeStart = getAnchorEvents().wake?.startMin ?? standardWake;
+    const wakeStart = getYourDayWakeMinutes();
     return normalizeDayMinutes(nowMinutes + standardWake - wakeStart);
   }
 
   function mapStandardToRealMinutes(mins) {
     const standardWake = getStandardWakeMinutes();
-    const wakeStart = getAnchorEvents().wake?.startMin ?? standardWake;
+    const wakeStart = getYourDayWakeMinutes();
     return normalizeDayMinutes(mins - standardWake + wakeStart);
   }
 
@@ -511,57 +532,62 @@
   }
 
   function render() {
-    renderClock();
+    renderStandardClock();
+    renderYourDayClock();
     renderDayList();
     renderRealDayList();
     renderNudgePlan();
-    renderNextEventLabel();
+    renderNextEventLabels();
     renderStandardDayCollapse();
+    syncYourDayWakeInput();
   }
 
-  function renderClock() {
-    if (!dayRing) return;
+  function prepareClock(ring) {
+    if (!ring) return null;
     const size = 400;
     const center = size / 2;
     const radius = 150;
-    dayRing.setAttribute('viewBox', `0 0 ${size} ${size}`);
-    while (dayRing.firstChild) dayRing.removeChild(dayRing.firstChild);
-
+    ring.setAttribute('viewBox', `0 0 ${size} ${size}`);
+    while (ring.firstChild) ring.removeChild(ring.firstChild);
     const backdrop = createSVG('circle', { cx: center, cy: center, r: radius, class: 'clock-backdrop' });
-    dayRing.appendChild(backdrop);
+    ring.appendChild(backdrop);
+    return { center, radius };
+  }
 
+  function drawDaylight(ring, center, radius) {
     const { sunrise, sunset } = calculateSunTimes(state.timeZone);
-    if (sunrise !== null && sunset !== null) {
-      const daylightGroup = createSVG('g');
-      const start = angleFromMinutes(sunrise);
-      const end = angleFromMinutes(sunset);
-      if (start !== end) {
-        const daylightArc = createSVG('path', {
-          d: describeArc(center, center, radius, start, end),
-          class: 'clock-daylight'
-        });
-        daylightGroup.appendChild(daylightArc);
-        const nightArc1 = createSVG('path', {
-          d: describeArc(center, center, radius, end, start + 360),
-          class: 'clock-night'
-        });
-        daylightGroup.appendChild(nightArc1);
-        dayRing.appendChild(daylightGroup);
-      }
-    }
+    if (sunrise === null || sunset === null || !ring) return;
+    const start = angleFromMinutes(sunrise);
+    const end = angleFromMinutes(sunset);
+    if (start === end) return;
+    const daylightGroup = createSVG('g');
+    const daylightArc = createSVG('path', {
+      d: describeArc(center, center, radius, start, end),
+      class: 'clock-daylight'
+    });
+    daylightGroup.appendChild(daylightArc);
+    const nightArc1 = createSVG('path', {
+      d: describeArc(center, center, radius, end, start + 360),
+      class: 'clock-night'
+    });
+    daylightGroup.appendChild(nightArc1);
+    ring.appendChild(daylightGroup);
+  }
 
-    const sleepWindow = getSleepWindow();
-    if (sleepWindow) {
-      const { start, end, duration } = sleepWindow;
-      const startAngle = angleFromMinutes(start);
-      const endAngle = startAngle + (duration / MINUTES_IN_DAY) * 360;
-      const sleepArc = createSVG('path', {
-        d: describeArc(center, center, radius - 10, startAngle, endAngle),
-        class: 'clock-sleep-window'
-      });
-      dayRing.appendChild(sleepArc);
-    }
+  function drawSleepWindowArc(ring, center, radius, window) {
+    if (!window || !ring) return;
+    const { start, duration } = window;
+    const startAngle = angleFromMinutes(start);
+    const endAngle = startAngle + (duration / MINUTES_IN_DAY) * 360;
+    const sleepArc = createSVG('path', {
+      d: describeArc(center, center, radius - 10, startAngle, endAngle),
+      class: 'clock-sleep-window'
+    });
+    ring.appendChild(sleepArc);
+  }
 
+  function drawHourTicks(ring, center, radius) {
+    if (!ring) return;
     for (let h = 0; h < 24; h++) {
       const angle = (h / 24) * 360;
       const cos = Math.cos(((angle - 90) * Math.PI) / 180);
@@ -573,15 +599,24 @@
         y2: center + sin * (radius + 8),
         class: 'clock-hour-tick'
       });
-      dayRing.appendChild(line);
+      ring.appendChild(line);
       const label = createSVG('text', {
         x: center + cos * (radius + 32),
         y: center + sin * (radius + 32) + 4,
         class: 'clock-hour-number'
       });
       label.textContent = formatHourTick(h);
-      dayRing.appendChild(label);
+      ring.appendChild(label);
     }
+  }
+
+  function renderStandardClock() {
+    const frame = prepareClock(dayRing);
+    if (!frame) return;
+    const { center, radius } = frame;
+    drawDaylight(dayRing, center, radius);
+    drawSleepWindowArc(dayRing, center, radius, getSleepWindow());
+    drawHourTicks(dayRing, center, radius);
 
     const now = getNow();
     const nowMinutes = minutesInZone(now, state.timeZone);
@@ -608,12 +643,60 @@
     dayRing.appendChild(centerDot);
 
     renderEventDots(center, radius);
-    updateClockLabels(nowMinutes, feelsMinutes);
+    updateClockLabels(nowMinutes, feelsMinutes, nowLabel, feelsLikeLabel);
   }
 
-  function updateClockLabels(nowMinutes, feelsMinutes) {
-    feelsLikeLabel.textContent = `Feels like · ${formatMinutes(feelsMinutes)}`;
-    nowLabel.textContent = `Real time · ${formatMinutes(nowMinutes)}`;
+  function getYourDayEvents() {
+    const delta = signedDelta(getStandardWakeMinutes(), getYourDayWakeMinutes());
+    return state.events.map((evt) => ({ ...shiftEvent(evt, delta), baseStart: evt.startMin }));
+  }
+
+  function renderYourDayClock() {
+    const frame = prepareClock(yourDayRing);
+    if (!frame) return;
+    const { center, radius } = frame;
+    drawDaylight(yourDayRing, center, radius);
+    const sleepWindow = getSleepWindow();
+    if (sleepWindow) {
+      const shiftedStart = mapStandardToRealMinutes(sleepWindow.start);
+      drawSleepWindowArc(yourDayRing, center, radius, {
+        start: shiftedStart,
+        duration: sleepWindow.duration
+      });
+    }
+    drawHourTicks(yourDayRing, center, radius);
+
+    const now = getNow();
+    const nowMinutes = minutesInZone(now, state.timeZone);
+    const feelsMinutes = feelsLikeMinutes(nowMinutes);
+    const feelsLikeHand = createSVG('line', {
+      x1: center,
+      y1: center,
+      x2: center + Math.cos(((angleFromMinutes(feelsMinutes) - 90) * Math.PI) / 180) * (radius + 10),
+      y2: center + Math.sin(((angleFromMinutes(feelsMinutes) - 90) * Math.PI) / 180) * (radius + 10),
+      class: 'clock-feels-hand'
+    });
+    yourDayRing.appendChild(feelsLikeHand);
+
+    const realTimeHand = createSVG('line', {
+      x1: center,
+      y1: center,
+      x2: center + Math.cos(((angleFromMinutes(nowMinutes) - 90) * Math.PI) / 180) * (radius - 32),
+      y2: center + Math.sin(((angleFromMinutes(nowMinutes) - 90) * Math.PI) / 180) * (radius - 32),
+      class: 'clock-now-hand'
+    });
+    yourDayRing.appendChild(realTimeHand);
+
+    const centerDot = createSVG('circle', { cx: center, cy: center, r: 6, class: 'clock-center' });
+    yourDayRing.appendChild(centerDot);
+
+    renderYourDayMarkers(getYourDayEvents(), center, radius);
+    updateClockLabels(nowMinutes, feelsMinutes, yourNowLabel, yourFeelsLikeLabel);
+  }
+
+  function updateClockLabels(nowMinutes, feelsMinutes, nowEl, feelsEl) {
+    if (feelsEl) feelsEl.textContent = `Feels like · ${formatMinutes(feelsMinutes)}`;
+    if (nowEl) nowEl.textContent = `Real time · ${formatMinutes(nowMinutes)}`;
   }
 
   function renderEventDots(center, radius) {
@@ -660,6 +743,40 @@
     dayRing.appendChild(dot);
   }
 
+  function renderYourDayMarkers(events, center, radius) {
+    const wake = events.find((evt) => evt.type === 'wake');
+    events.forEach((evt) => {
+      if (evt.type === 'wake') return;
+      const angle = (evt.startMin / MINUTES_IN_DAY) * 2 * Math.PI;
+      const cos = Math.cos(angle - Math.PI / 2);
+      const sin = Math.sin(angle - Math.PI / 2);
+      const marker = createSVG('line', {
+        x1: center + cos * (radius - 22),
+        y1: center + sin * (radius - 22),
+        x2: center + cos * (radius + 6),
+        y2: center + sin * (radius + 6),
+        class: 'your-day-marker',
+        'data-type': evt.type
+      });
+      yourDayRing.appendChild(marker);
+    });
+
+    if (wake) {
+      const { x, y } = rotatePoint(wake.startMin, radius, center);
+      const dot = createSVG('circle', {
+        cx: x,
+        cy: y,
+        r: 10,
+        class: 'your-day-wake-dot',
+        tabindex: 0,
+        'aria-label': 'Adjust wake time'
+      });
+      dot.addEventListener('pointerdown', handleYourDayPointerStart);
+      dot.addEventListener('keydown', handleYourDayKeyboardNudge);
+      yourDayRing.appendChild(dot);
+    }
+  }
+
   function signedDelta(from, to) {
     const raw = ((to - from) % MINUTES_IN_DAY + MINUTES_IN_DAY) % MINUTES_IN_DAY;
     return raw > MINUTES_IN_DAY / 2 ? raw - MINUTES_IN_DAY : raw;
@@ -686,6 +803,9 @@
     const previousStart = evt.startMin;
     const delta = typeof deltaOverride === 'number' ? deltaOverride : signedDelta(previousStart, newStart);
     updateEventTiming(evt, newStart);
+    if (evt.type === 'wake') {
+      state.standardWakeMinutes = newStart;
+    }
     if (evt.type === 'wake' && state.lockToWake && delta) {
       shiftLinkedEvents(delta, evt.id);
       if (options.notifyLockShift) {
@@ -785,6 +905,55 @@
     render();
   }
 
+  function handleYourDayPointerStart(evt) {
+    evt.preventDefault();
+    const target = evt.currentTarget;
+    if (target?.setPointerCapture) {
+      target.setPointerCapture(evt.pointerId);
+    }
+    yourDayPointerDrag = true;
+    document.addEventListener('pointermove', handleYourDayPointerMove);
+    document.addEventListener('pointerup', handleYourDayPointerEnd);
+    document.addEventListener('pointercancel', handleYourDayPointerEnd);
+  }
+
+  function handleYourDayPointerMove(evt) {
+    if (!yourDayPointerDrag) return;
+    evt.preventDefault();
+    const minutes = getMinutesFromPointer(evt, yourDayRing);
+    if (typeof minutes !== 'number') return;
+    state.yourDayWakeMinutes = minutes;
+    persistState();
+    render();
+  }
+
+  function handleYourDayPointerEnd(evt) {
+    if (!yourDayPointerDrag) return;
+    evt.preventDefault();
+    const target = evt.target;
+    if (target?.releasePointerCapture) {
+      try {
+        target.releasePointerCapture(evt.pointerId);
+      } catch (err) {
+        /* ignore */
+      }
+    }
+    yourDayPointerDrag = null;
+    document.removeEventListener('pointermove', handleYourDayPointerMove);
+    document.removeEventListener('pointerup', handleYourDayPointerEnd);
+    document.removeEventListener('pointercancel', handleYourDayPointerEnd);
+  }
+
+  function handleYourDayKeyboardNudge(evt) {
+    const increment = evt.shiftKey ? SNAP_SHIFT : SNAP_DEFAULT;
+    if (!['ArrowLeft', 'ArrowRight'].includes(evt.key)) return;
+    evt.preventDefault();
+    const delta = evt.key === 'ArrowRight' ? increment : -increment;
+    state.yourDayWakeMinutes = normalizeDayMinutes(getYourDayWakeMinutes() + delta);
+    persistState();
+    render();
+  }
+
   function handleKeyboardNudge(evt) {
     const increment = evt.shiftKey ? SNAP_SHIFT : SNAP_DEFAULT;
     if (!['ArrowLeft', 'ArrowRight'].includes(evt.key)) return;
@@ -799,8 +968,9 @@
     render();
   }
 
-  function getMinutesFromPointer(evt) {
-    const rect = dayRing.getBoundingClientRect();
+  function getMinutesFromPointer(evt, ring = dayRing) {
+    const rect = ring?.getBoundingClientRect();
+    if (!rect) return null;
     const x = evt.clientX - rect.left;
     const y = evt.clientY - rect.top;
     const cx = rect.width / 2;
@@ -1005,23 +1175,29 @@
     return (last.startMin + duration + 30) % MINUTES_IN_DAY;
   }
 
-  function renderNextEventLabel() {
-    if (!nextEventLabel) return;
+  function renderNextEventLabels() {
+    renderNextEventLabelFor(state.events, nextEventLabel, dayRing);
+    renderNextEventLabelFor(getYourDayEvents(), yourNextEventLabel, yourDayRing);
+  }
+
+  function renderNextEventLabelFor(events, labelEl, ringEl) {
+    if (!labelEl || !ringEl) return;
     const nowMinutes = minutesInZone(getNow(), state.timeZone);
-    const upcoming = state.events
+    const upcoming = events
       .map((evt) => ({ ...evt, minutesUntil: ((evt.startMin - nowMinutes + MINUTES_IN_DAY) % MINUTES_IN_DAY) }))
       .sort((a, b) => a.minutesUntil - b.minutesUntil)[0];
     if (!upcoming) {
-      nextEventLabel.hidden = true;
+      labelEl.hidden = true;
       return;
     }
-    nextEventLabel.hidden = false;
-    nextEventLabel.textContent = `${upcoming.title} in ${formatDuration(upcoming.minutesUntil)}`;
-    positionLabelForEvent(upcoming, nextEventLabel);
+    labelEl.hidden = false;
+    labelEl.textContent = `${upcoming.title} in ${formatDuration(upcoming.minutesUntil)}`;
+    positionLabelForEvent(upcoming, labelEl, ringEl);
   }
 
-  function positionLabelForEvent(evt, element) {
-    const rect = dayRing.getBoundingClientRect();
+  function positionLabelForEvent(evt, element, ring = dayRing) {
+    const rect = ring?.getBoundingClientRect();
+    if (!rect) return;
     const overlayRect = element.offsetParent?.getBoundingClientRect() || rect;
     const centerX = rect.left + rect.width / 2;
     const centerY = rect.top + rect.height / 2;
@@ -1068,9 +1244,11 @@
       return;
     }
 
-    const events = state.events.slice().sort(compareEvents);
-    const wakeStart = getAnchorEvents().wake?.startMin ?? null;
-    const wakeHint = wakeStart ? '' : ' (using default wake)';
+    const events = getYourDayEvents()
+      .slice()
+      .sort((a, b) => a.startMin - b.startMin);
+    const hasWake = state.events.some((evt) => evt.type === 'wake');
+    const wakeHint = hasWake ? '' : ' (using default wake)';
 
     events.forEach((evt) => {
       const li = document.createElement('li');
@@ -1090,11 +1268,12 @@
       timeButton.className = 'day-item__time';
       const timeRange = document.createElement('span');
       timeRange.className = 'day-item__time-range';
-      const realMinutes = mapStandardToRealMinutes(evt.startMin);
+      const realMinutes = evt.startMin;
       timeRange.textContent = minutesToLabel(realMinutes);
       const timeHint = document.createElement('span');
       timeHint.className = 'day-item__time-hint';
-      timeHint.textContent = `Feels like ${minutesToLabel(evt.startMin)}${wakeHint}`;
+      const feelsStart = typeof evt.baseStart === 'number' ? evt.baseStart : evt.startMin;
+      timeHint.textContent = `Feels like ${minutesToLabel(feelsStart)}${wakeHint}`;
       timeButton.appendChild(timeRange);
       timeButton.appendChild(timeHint);
 
@@ -1649,9 +1828,47 @@
     });
   }
 
+  function setActiveTab(tab) {
+    state.activeTab = tab === 'standard' ? 'standard' : 'your';
+    tabButtons.forEach((btn) => {
+      const isActive = btn.getAttribute('data-tab') === state.activeTab;
+      btn.classList.toggle('tab-active', isActive);
+      btn.setAttribute('aria-selected', isActive ? 'true' : 'false');
+      const panelId = btn.getAttribute('aria-controls');
+      const panel = panelId ? document.getElementById(panelId) : null;
+      if (panel) panel.hidden = !isActive;
+    });
+    persistState();
+  }
+
+  function initTabs() {
+    if (!tabButtons.length) return;
+    tabButtons.forEach((btn) => {
+      btn.addEventListener('click', () => setActiveTab(btn.getAttribute('data-tab')));
+    });
+    setActiveTab(state.activeTab);
+  }
+
+  function syncYourDayWakeInput() {
+    if (!yourDayWakeInput) return;
+    yourDayWakeInput.value = minutesToTime(getYourDayWakeMinutes());
+  }
+
+  function initYourDayWakeInput() {
+    if (!yourDayWakeInput) return;
+    yourDayWakeInput.addEventListener('change', (evt) => {
+      const minutes = toMinutes(evt.target.value);
+      state.yourDayWakeMinutes = minutes;
+      persistState();
+      render();
+    });
+    syncYourDayWakeInput();
+  }
+
   function resetStandardDay() {
     state.events = defaultEvents();
     state.standardWakeMinutes = toMinutes('07:00');
+    state.yourDayWakeMinutes = state.standardWakeMinutes;
     state.selectedId = null;
     state.openEditorId = null;
     persistState();
@@ -1680,6 +1897,7 @@
     applyTheme(state.theme);
     initTextScaling();
     initThemeButtons();
+    initTabs();
     initTimezoneControls();
     initTimeFormatControls();
     initPlannerControls();
@@ -1690,12 +1908,14 @@
     initAdvancedAccordion();
     initOverrideControls();
     initLockToggle();
+    initYourDayWakeInput();
     initShareControls();
     initStandardDayControls();
     render();
     setInterval(() => {
-      renderClock();
-      renderNextEventLabel();
+      renderStandardClock();
+      renderYourDayClock();
+      renderNextEventLabels();
     }, 60000);
   }
 
