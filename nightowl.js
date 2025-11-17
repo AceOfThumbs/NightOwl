@@ -54,6 +54,10 @@
   const savePlannerBtn = $('savePlanner');
   const loadPlannerBtn = $('loadPlanner');
   const shareCloseEls = Array.from(document.querySelectorAll('[data-share-close]'));
+  const standardCollapseToggle = $('standardCollapseToggle');
+  const standardDayBody = $('standardDayBody');
+  const resetStandardDayBtn = $('resetStandardDay');
+  const realDayList = $('realDayList');
 
   const timezoneLocations = {
     local: { label: 'Local', lat: 40.7128, lon: -74.006 },
@@ -94,11 +98,11 @@
   const defaultEvents = () => [
     createEvent('sleep', 'Sleep', toMinutes('23:00'), minutesDiff(toMinutes('23:00'), toMinutes('07:00'))),
     createEvent('wake', 'Wake up', toMinutes('07:00'), 30),
-    createEvent('meal', 'Breakfast', toMinutes('07:30'), 30),
+    createEvent('meal', 'Breakfast', toMinutes('08:00'), 30),
     createEvent('work', 'Work', toMinutes('09:00'), minutesDiff(toMinutes('09:00'), toMinutes('17:00'))),
-    createEvent('meal', 'Lunch', toMinutes('12:30'), 45),
+    createEvent('meal', 'Lunch', toMinutes('12:00'), 45),
     createEvent('exercise', 'Exercise', toMinutes('18:00'), 60),
-    createEvent('meal', 'Dinner', toMinutes('19:30'), 45)
+    createEvent('meal', 'Dinner', toMinutes('18:00'), 45)
   ];
 
   function countEventsByType(type) {
@@ -140,7 +144,10 @@
     timeFormat: '24h',
     overrideNow: null,
     shareIncludeEvents: false,
-    lockToWake: true
+    lockToWake: true,
+    standardWakeMinutes: toMinutes('07:00'),
+    standardCollapsed: false,
+    standardCollapsedNextDefault: false
   };
 
   state.targetDate = todayISO();
@@ -169,13 +176,17 @@
     return state.overrideNow ? new Date(state.overrideNow) : new Date();
   }
 
+  function normalizeDayMinutes(value) {
+    return ((Number(value) % MINUTES_IN_DAY) + MINUTES_IN_DAY) % MINUTES_IN_DAY;
+  }
+
   function pad(n) {
     return String(n).padStart(2, '0');
   }
 
   function toMinutes(time) {
     const [h = 0, m = 0] = String(time).split(':').map((p) => Number(p));
-    return ((h * 60 + m) % MINUTES_IN_DAY + MINUTES_IN_DAY) % MINUTES_IN_DAY;
+    return normalizeDayMinutes(h * 60 + m);
   }
 
   function minutesToTime(mins) {
@@ -241,6 +252,7 @@
     }
     try {
       const prefs = JSON.parse(localStorage.getItem(PREFS_KEY) || 'null');
+      const hasPrefs = !!prefs;
       if (prefs) {
         state.textScale = clamp(prefs.textScale ?? state.textScale, MIN_TEXT_SCALE, MAX_TEXT_SCALE);
         state.theme = prefs.theme === 'light' ? 'light' : 'dark';
@@ -253,6 +265,14 @@
         state.timeFormat = prefs.timeFormat === '12h' ? '12h' : '24h';
         state.shareIncludeEvents = Boolean(prefs.shareIncludeEvents);
         state.lockToWake = prefs.lockToWake !== false;
+        state.standardWakeMinutes = normalizeDayMinutes(
+          typeof prefs.standardWakeMinutes === 'number' ? prefs.standardWakeMinutes : state.standardWakeMinutes
+        );
+        state.standardCollapsed = prefs.standardCollapsed ?? true;
+      }
+      if (!hasPrefs) {
+        state.standardCollapsed = false;
+        state.standardCollapsedNextDefault = true;
       }
     } catch (err) {
       console.warn('Failed to load prefs', err);
@@ -289,7 +309,9 @@
         adjustmentCurve: state.adjustmentCurve,
         timeFormat: state.timeFormat,
         shareIncludeEvents: state.shareIncludeEvents,
-        lockToWake: state.lockToWake
+        lockToWake: state.lockToWake,
+        standardWakeMinutes: state.standardWakeMinutes,
+        standardCollapsed: state.standardCollapsedNextDefault ? true : state.standardCollapsed
       })
     );
     if (state.overrideNow) {
@@ -462,6 +484,23 @@
     return { wake, sleep };
   }
 
+  function getStandardWakeMinutes() {
+    const fallback = toMinutes('07:00');
+    return normalizeDayMinutes(typeof state.standardWakeMinutes === 'number' ? state.standardWakeMinutes : fallback);
+  }
+
+  function feelsLikeMinutes(nowMinutes) {
+    const standardWake = getStandardWakeMinutes();
+    const wakeStart = getAnchorEvents().wake?.startMin ?? standardWake;
+    return normalizeDayMinutes(nowMinutes + standardWake - wakeStart);
+  }
+
+  function mapStandardToRealMinutes(mins) {
+    const standardWake = getStandardWakeMinutes();
+    const wakeStart = getAnchorEvents().wake?.startMin ?? standardWake;
+    return normalizeDayMinutes(mins - standardWake + wakeStart);
+  }
+
   function getSleepWindow() {
     const { wake, sleep } = getAnchorEvents();
     const fallbackDuration = eventTypes.sleep.defaultDuration;
@@ -474,8 +513,10 @@
   function render() {
     renderClock();
     renderDayList();
+    renderRealDayList();
     renderNudgePlan();
     renderNextEventLabel();
+    renderStandardDayCollapse();
   }
 
   function renderClock() {
@@ -544,35 +585,35 @@
 
     const now = getNow();
     const nowMinutes = minutesInZone(now, state.timeZone);
-    const nowHand = createSVG('line', {
-      x1: center,
-      y1: center,
-      x2: center + Math.cos(((angleFromMinutes(nowMinutes) - 90) * Math.PI) / 180) * (radius + 10),
-      y2: center + Math.sin(((angleFromMinutes(nowMinutes) - 90) * Math.PI) / 180) * (radius + 10),
-      class: 'clock-now-hand'
-    });
-    dayRing.appendChild(nowHand);
-
-    const feelsLikeMinutes = (nowMinutes + 30) % MINUTES_IN_DAY;
+    const feelsMinutes = feelsLikeMinutes(nowMinutes);
     const feelsLikeHand = createSVG('line', {
       x1: center,
       y1: center,
-      x2: center + Math.cos(((angleFromMinutes(feelsLikeMinutes) - 90) * Math.PI) / 180) * (radius - 32),
-      y2: center + Math.sin(((angleFromMinutes(feelsLikeMinutes) - 90) * Math.PI) / 180) * (radius - 32),
+      x2: center + Math.cos(((angleFromMinutes(feelsMinutes) - 90) * Math.PI) / 180) * (radius + 10),
+      y2: center + Math.sin(((angleFromMinutes(feelsMinutes) - 90) * Math.PI) / 180) * (radius + 10),
       class: 'clock-feels-hand'
     });
     dayRing.appendChild(feelsLikeHand);
+
+    const realTimeHand = createSVG('line', {
+      x1: center,
+      y1: center,
+      x2: center + Math.cos(((angleFromMinutes(nowMinutes) - 90) * Math.PI) / 180) * (radius - 32),
+      y2: center + Math.sin(((angleFromMinutes(nowMinutes) - 90) * Math.PI) / 180) * (radius - 32),
+      class: 'clock-now-hand'
+    });
+    dayRing.appendChild(realTimeHand);
 
     const centerDot = createSVG('circle', { cx: center, cy: center, r: 6, class: 'clock-center' });
     dayRing.appendChild(centerDot);
 
     renderEventDots(center, radius);
-    updateClockLabels(nowMinutes, feelsLikeMinutes);
+    updateClockLabels(nowMinutes, feelsMinutes);
   }
 
   function updateClockLabels(nowMinutes, feelsMinutes) {
-    nowLabel.textContent = `Now · ${formatMinutes(nowMinutes)}`;
-    feelsLikeLabel.textContent = `Feels like ${formatMinutes(feelsMinutes)}`;
+    feelsLikeLabel.textContent = `Feels like · ${formatMinutes(feelsMinutes)}`;
+    nowLabel.textContent = `Real time · ${formatMinutes(nowMinutes)}`;
   }
 
   function renderEventDots(center, radius) {
@@ -1013,6 +1054,64 @@
       option.textContent = timezoneLocations[tz].label;
       timeZoneSelect.appendChild(option);
     });
+  }
+
+  function renderRealDayList() {
+    if (!realDayList) return;
+    realDayList.innerHTML = '';
+
+    if (!state.events.length) {
+      const empty = document.createElement('li');
+      empty.className = 'text-muted';
+      empty.textContent = 'No events yet. Add Standard Day items to see them in real time.';
+      realDayList.appendChild(empty);
+      return;
+    }
+
+    const events = state.events.slice().sort(compareEvents);
+    const wakeStart = getAnchorEvents().wake?.startMin ?? null;
+    const wakeHint = wakeStart ? '' : ' (using default wake)';
+
+    events.forEach((evt) => {
+      const li = document.createElement('li');
+      li.className = 'day-item';
+      const meta = eventTypes[evt.type] || eventTypes.custom;
+      const icon = document.createElement('div');
+      icon.className = 'day-item__icon';
+      icon.textContent = meta.icon;
+
+      const titleWrap = document.createElement('div');
+      titleWrap.className = 'day-item__title';
+      const title = document.createElement('div');
+      title.textContent = evt.title;
+      titleWrap.appendChild(title);
+
+      const timeButton = document.createElement('div');
+      timeButton.className = 'day-item__time';
+      const timeRange = document.createElement('span');
+      timeRange.className = 'day-item__time-range';
+      const realMinutes = mapStandardToRealMinutes(evt.startMin);
+      timeRange.textContent = minutesToLabel(realMinutes);
+      const timeHint = document.createElement('span');
+      timeHint.className = 'day-item__time-hint';
+      timeHint.textContent = `Feels like ${minutesToLabel(evt.startMin)}${wakeHint}`;
+      timeButton.appendChild(timeRange);
+      timeButton.appendChild(timeHint);
+
+      li.appendChild(icon);
+      li.appendChild(titleWrap);
+      li.appendChild(timeButton);
+
+      realDayList.appendChild(li);
+    });
+  }
+
+  function renderStandardDayCollapse() {
+    if (!standardDayBody || !standardCollapseToggle) return;
+    const collapsed = !!state.standardCollapsed;
+    standardDayBody.hidden = collapsed;
+    standardCollapseToggle.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+    standardCollapseToggle.textContent = collapsed ? 'Expand' : 'Collapse';
   }
 
   function calculateSunTimes(timeZone) {
@@ -1550,6 +1649,31 @@
     });
   }
 
+  function resetStandardDay() {
+    state.events = defaultEvents();
+    state.standardWakeMinutes = toMinutes('07:00');
+    state.selectedId = null;
+    state.openEditorId = null;
+    persistState();
+    render();
+    showToast('Standard Day reset to defaults', 'success');
+  }
+
+  function initStandardDayControls() {
+    renderStandardDayCollapse();
+    if (standardCollapseToggle) {
+      standardCollapseToggle.addEventListener('click', () => {
+        state.standardCollapsed = !state.standardCollapsed;
+        state.standardCollapsedNextDefault = false;
+        persistState();
+        renderStandardDayCollapse();
+      });
+    }
+    if (resetStandardDayBtn) {
+      resetStandardDayBtn.addEventListener('click', resetStandardDay);
+    }
+  }
+
   function init() {
     loadState();
     loadSharedPlannerFromURL();
@@ -1567,6 +1691,7 @@
     initOverrideControls();
     initLockToggle();
     initShareControls();
+    initStandardDayControls();
     render();
     setInterval(() => {
       renderClock();
