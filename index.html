@@ -29,75 +29,147 @@
       </header>
 
       <main class="layout">
-        <section class="panel panel-clock" aria-labelledby="clockTitle">
-          <header class="panel-head">
-            <h2 id="clockTitle">Clock</h2>
-            <div class="clock-meta" aria-live="polite">
-              <span class="clock-meta__feels" id="feelsLikeLabel"></span>
-              <span class="clock-meta__now" id="nowLabel"></span>
-            </div>
-          </header>
-          <div class="clock-stage">
-            <div class="day-ring" role="application" aria-label="24-hour planner clock">
-              <svg id="dayRing" viewBox="0 0 400 400" aria-hidden="true"></svg>
-              <div class="ring-overlay">
-                <div class="next-event" id="nextEventLabel" hidden></div>
-              </div>
-            </div>
-            <div class="micro-legend" aria-label="Legend">
-              <span><span class="legend-dot legend-day"></span>☀️ day</span>
-              <span><span class="legend-dot legend-night"></span>🌙 sleep</span>
-              <span><span class="legend-dot legend-meal"></span>🍽️ meals</span>
-              <span><span class="legend-dot legend-move"></span>🧘‍♀️ exercise</span>
-              <span><span class="legend-dot legend-work"></span>💼 work</span>
-            </div>
-            <div class="filter-chips" role="group" aria-label="Filter event types">
-              <button class="chip chip-active" data-filter="all">All</button>
-              <button class="chip" data-filter="sleep">Sleep</button>
-              <button class="chip" data-filter="meal">Meals</button>
-              <button class="chip" data-filter="exercise">Exercise</button>
-              <button class="chip" data-filter="work">Work</button>
-            </div>
-          </div>
-        </section>
-
-        <section class="panel panel-day" aria-labelledby="dayListTitle">
+        <section class="panel panel-tabs" aria-labelledby="clockTabsTitle">
           <header class="panel-head panel-head--split">
             <div>
-              <h2 id="dayListTitle">Standard Day</h2>
-              <p class="text-muted">Define your reference schedule. Drag items on the clock or edit times below.</p>
+              <h2 id="clockTabsTitle">Clock</h2>
+              <p class="text-muted">Jump between Standard Day and Your Day to edit wake time or rearrange events.</p>
             </div>
-            <div class="panel-actions">
-              <button id="resetStandardDay" class="btn btn-ghost" type="button">Reset</button>
+            <div class="tab-list" role="tablist" aria-label="Clock view">
               <button
-                id="standardCollapseToggle"
-                class="btn btn-ghost"
+                id="tabYourDay"
+                class="tab tab-active"
                 type="button"
-                aria-expanded="true"
-                aria-controls="standardDayBody"
+                role="tab"
+                aria-selected="true"
+                aria-controls="yourDayTab"
+                data-tab="your"
               >
-                Collapse
+                Your Day
+              </button>
+              <button
+                id="tabStandardDay"
+                class="tab"
+                type="button"
+                role="tab"
+                aria-selected="false"
+                aria-controls="standardDayTab"
+                data-tab="standard"
+              >
+                Standard Day
               </button>
             </div>
           </header>
-          <div id="standardDayBody">
-            <div class="list-controls">
-              <label class="toggle">
-                <input id="lockWakeToggle" type="checkbox" checked />
-                <span class="toggle__label">Lock to Wake</span>
-              </label>
-              <button id="addDayItem" class="btn btn-primary" type="button">Add item</button>
-            </div>
-            <ul id="dayList" class="day-list" aria-live="polite"></ul>
-          </div>
-        </section>
 
-        <section class="panel panel-day" aria-labelledby="realDayTitle">
-          <header class="panel-head">
-            <h2 id="realDayTitle">Your Day (Real Time)</h2>
-            <p class="text-muted">See Standard Day events mapped to your current wake time.</p>
-          </header>
-          <ul id="realDayList" class="day-list day-list--readonly" aria-live="polite"></ul>
+          <div class="tab-panels">
+            <div id="yourDayTab" class="tab-panel" role="tabpanel" aria-labelledby="tabYourDay">
+              <section class="panel panel-clock" aria-labelledby="yourDayClockTitle">
+                <header class="panel-head">
+                  <h3 id="yourDayClockTitle">Your Day clock</h3>
+                  <div class="clock-meta" aria-live="polite">
+                    <span class="clock-meta__feels" id="yourFeelsLikeLabel"></span>
+                    <span class="clock-meta__now" id="yourNowLabel"></span>
+                  </div>
+                </header>
+                <div class="clock-stage">
+                  <div class="day-ring" role="application" aria-label="Your Day clock">
+                    <svg id="yourDayRing" viewBox="0 0 400 400" aria-hidden="true"></svg>
+                    <div class="ring-overlay">
+                      <div class="next-event" id="yourNextEventLabel" hidden></div>
+                    </div>
+                  </div>
+                  <div class="micro-legend" aria-label="Legend">
+                    <span><span class="legend-dot legend-day"></span>☀️ day</span>
+                    <span><span class="legend-dot legend-night"></span>🌙 sleep</span>
+                    <span><span class="legend-dot legend-meal"></span>🍽️ meals</span>
+                    <span><span class="legend-dot legend-move"></span>🧘‍♀️ exercise</span>
+                    <span><span class="legend-dot legend-work"></span>💼 work</span>
+                  </div>
+                </div>
+              </section>
+
+              <section class="panel panel-day" aria-labelledby="realDayTitle">
+                <header class="panel-head">
+                  <div>
+                    <h3 id="realDayTitle">Your Day (Real Time)</h3>
+                    <p class="text-muted">Shift Standard Day to your chosen wake time.</p>
+                  </div>
+                  <div class="panel-actions">
+                    <label class="field field-inline">
+                      <span class="field-label">Wake time</span>
+                      <input id="yourDayWakeInput" type="time" />
+                    </label>
+                  </div>
+                </header>
+                <ul id="realDayList" class="day-list day-list--readonly" aria-live="polite"></ul>
+              </section>
+            </div>
+
+            <div id="standardDayTab" class="tab-panel" role="tabpanel" aria-labelledby="tabStandardDay" hidden>
+              <section class="panel panel-clock" aria-labelledby="clockTitle">
+                <header class="panel-head">
+                  <h3 id="clockTitle">Standard Day clock</h3>
+                  <div class="clock-meta" aria-live="polite">
+                    <span class="clock-meta__feels" id="feelsLikeLabel"></span>
+                    <span class="clock-meta__now" id="nowLabel"></span>
+                  </div>
+                </header>
+                <div class="clock-stage">
+                  <div class="day-ring" role="application" aria-label="24-hour planner clock">
+                    <svg id="dayRing" viewBox="0 0 400 400" aria-hidden="true"></svg>
+                    <div class="ring-overlay">
+                      <div class="next-event" id="nextEventLabel" hidden></div>
+                    </div>
+                  </div>
+                  <div class="micro-legend" aria-label="Legend">
+                    <span><span class="legend-dot legend-day"></span>☀️ day</span>
+                    <span><span class="legend-dot legend-night"></span>🌙 sleep</span>
+                    <span><span class="legend-dot legend-meal"></span>🍽️ meals</span>
+                    <span><span class="legend-dot legend-move"></span>🧘‍♀️ exercise</span>
+                    <span><span class="legend-dot legend-work"></span>💼 work</span>
+                  </div>
+                  <div class="filter-chips" role="group" aria-label="Filter event types">
+                    <button class="chip chip-active" data-filter="all">All</button>
+                    <button class="chip" data-filter="sleep">Sleep</button>
+                    <button class="chip" data-filter="meal">Meals</button>
+                    <button class="chip" data-filter="exercise">Exercise</button>
+                    <button class="chip" data-filter="work">Work</button>
+                  </div>
+                </div>
+              </section>
+
+              <section class="panel panel-day" aria-labelledby="dayListTitle">
+                <header class="panel-head panel-head--split">
+                  <div>
+                    <h3 id="dayListTitle">Standard Day</h3>
+                    <p class="text-muted">Define your reference schedule. Drag items on the clock or edit times below.</p>
+                  </div>
+                  <div class="panel-actions">
+                    <button id="resetStandardDay" class="btn btn-ghost" type="button">Reset</button>
+                    <button
+                      id="standardCollapseToggle"
+                      class="btn btn-ghost"
+                      type="button"
+                      aria-expanded="true"
+                      aria-controls="standardDayBody"
+                    >
+                      Collapse
+                    </button>
+                  </div>
+                </header>
+                <div id="standardDayBody">
+                  <div class="list-controls">
+                    <label class="toggle">
+                      <input id="lockWakeToggle" type="checkbox" checked />
+                      <span class="toggle__label">Lock to Wake</span>
+                    </label>
+                    <button id="addDayItem" class="btn btn-primary" type="button">Add item</button>
+                  </div>
+                  <ul id="dayList" class="day-list" aria-live="polite"></ul>
+                </div>
+              </section>
+            </div>
+          </div>
         </section>
 
         <section class="panel panel-nudge" aria-labelledby="nudgeTitle">
