@@ -306,6 +306,10 @@ textarea {
   gap: var(--space-4);
 }
 
+.tab-panel[hidden] {
+  display: none;
+}
+
 .clock-stage {
   display: flex;
   flex-direction: column;
