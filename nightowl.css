@@ -226,6 +226,15 @@ textarea {
   gap: var(--space-3);
 }
 
+.panel-head--split {
+  align-items: flex-start;
+}
+
+.panel-actions {
+  display: flex;
+  gap: var(--space-2);
+}
+
 .panel-head h2 {
   margin: 0;
   font-size: clamp(1.2rem, 2vw, 1.6rem);
@@ -397,6 +406,21 @@ textarea {
   list-style: none;
   padding: 0;
   margin: 0;
+}
+
+.day-list--readonly .day-item {
+  opacity: 0.9;
+  cursor: default;
+}
+
+.day-list--readonly .day-item__title input {
+  pointer-events: none;
+  background: var(--card-subtle);
+}
+
+.day-list--readonly .day-item__actions,
+.day-list--readonly .time-editor {
+  display: none;
 }
 
 .day-item {
