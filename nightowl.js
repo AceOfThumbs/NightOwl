@@ -7,8 +7,6 @@
   const SNAP_DEFAULT = 5;
   const SNAP_ALT = 1;
   const SNAP_SHIFT = 15;
-  const MAX_TEXT_SCALE = 1.35;
-  const MIN_TEXT_SCALE = 0.85;
   const TEXT_SCALE_STEP = 0.1;
   const SHARE_PARAM = 'planner';
   const SAVED_PLANNER_KEY = 'nightowl.savedPlanner.v1';
@@ -261,7 +259,7 @@
     try {
       const prefs = JSON.parse(localStorage.getItem(PREFS_KEY) || 'null');
       if (prefs) {
-        state.textScale = clamp(prefs.textScale ?? state.textScale, MIN_TEXT_SCALE, MAX_TEXT_SCALE);
+        state.textScale = Number.isFinite(prefs.textScale) ? prefs.textScale : state.textScale;
         state.theme = prefs.theme === 'light' ? 'light' : 'dark';
         state.timeZone = prefs.timeZone || state.timeZone;
         state.targetTime = prefs.targetTime || state.targetTime;
@@ -436,10 +434,8 @@
   }
 
   function applyTextScale(scale) {
-    state.textScale = clamp(scale, MIN_TEXT_SCALE, MAX_TEXT_SCALE);
+    state.textScale = Number.isFinite(scale) ? scale : state.textScale;
     document.documentElement.style.setProperty('--scale', state.textScale);
-    if (textScaleDown) textScaleDown.disabled = state.textScale <= MIN_TEXT_SCALE + 0.001;
-    if (textScaleUp) textScaleUp.disabled = state.textScale >= MAX_TEXT_SCALE - 0.001;
     persistState();
   }
 
@@ -1191,12 +1187,8 @@
     const overlayRect = element.offsetParent?.getBoundingClientRect() || rect;
     const centerX = rect.left + rect.width / 2;
     const centerY = rect.top + rect.height / 2;
-    const angle = ((evt.startMin / MINUTES_IN_DAY) * 360) - 90;
-    const radius = rect.width / 2 * 0.85;
-    const x = centerX + Math.cos((angle * Math.PI) / 180) * radius - overlayRect.left;
-    const y = centerY + Math.sin((angle * Math.PI) / 180) * radius - overlayRect.top;
-    element.style.left = `${x}px`;
-    element.style.top = `${y}px`;
+    element.style.left = `${centerX - overlayRect.left}px`;
+    element.style.top = `${centerY - overlayRect.top}px`;
   }
 
   function showToast(message, variant = 'info', duration = 2600) {
@@ -1766,6 +1758,8 @@
   function initTextScaling() {
     if (textScaleDown) textScaleDown.addEventListener('click', () => applyTextScale(state.textScale - TEXT_SCALE_STEP));
     if (textScaleUp) textScaleUp.addEventListener('click', () => applyTextScale(state.textScale + TEXT_SCALE_STEP));
+    const textScaleReset = $('textScaleReset');
+    if (textScaleReset) textScaleReset.addEventListener('click', () => applyTextScale(1));
     applyTextScale(state.textScale);
   }
 
