@@ -1349,11 +1349,13 @@
 
     const sleepWindow = getSleepWindow();
     const yourDaySleep = getYourDayEvents().find((evt) => evt.type === 'sleep');
-    const sleepDuration = yourDaySleep?.duration ?? sleepWindow.duration;
     const currentWake = getYourDayWakeMinutes();
     const shiftedSleepStart = typeof yourDaySleep?.startMin === 'number'
       ? yourDaySleep.startMin
       : mapStandardToRealMinutes(sleepWindow.start);
+    const sleepDuration = yourDaySleep
+      ? minutesDiff(yourDaySleep.startMin, yourDaySleep.endMin)
+      : minutesDiff(shiftedSleepStart, currentWake);
     const reference = state.plannerMode === 'wake' ? currentWake : shiftedSleepStart;
     const targetMinutes = toMinutes(state.targetTime);
     let diff = ((targetMinutes - reference + MINUTES_IN_DAY) % MINUTES_IN_DAY + MINUTES_IN_DAY) % MINUTES_IN_DAY;
