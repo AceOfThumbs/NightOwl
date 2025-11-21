@@ -171,6 +171,12 @@
     return d;
   }
 
+  function shiftDate(date, days) {
+    const shifted = new Date(date);
+    shifted.setDate(shifted.getDate() + days);
+    return shifted;
+  }
+
   function parseLocalDate(value) {
     if (!value) return null;
     const [year, month, day] = String(value).split('-').map(Number);
@@ -1357,7 +1363,10 @@
 
     const step = clamp(Number(state.dailyStep) || 30, 5, 120);
     const today = startOfDay(getNow());
-    const targetDate = parseLocalDate(state.targetDate) || today;
+    const rawTargetDate = parseLocalDate(state.targetDate) || today;
+    // A sleep target occurs the evening before its calendar date, so shift the
+    // target back one day to count the correct number of nights.
+    const targetDate = state.plannerMode === 'sleep' ? shiftDate(rawTargetDate, -1) : rawTargetDate;
     const direction = targetDate >= today ? 1 : -1;
     const dayMs = 24 * 60 * 60 * 1000;
     const startDate = new Date(today);
