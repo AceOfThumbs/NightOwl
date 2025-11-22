@@ -1375,40 +1375,14 @@
     if (targetDate > today) startDate.setDate(startDate.getDate() + 1);
     else if (targetDate < today) startDate.setDate(startDate.getDate() - 1);
     const totalDays = Math.abs(Math.round((targetDate - startDate) / dayMs)) + 1;
-    const easeFn = state.adjustmentCurve === 'curved' ? easeInOut : easeLinear;
-    const shouldRoundEase = true; // Round to whole minutes for all adjustment curves
-    const cumulativeTargets = [];
-
-    for (let i = 0; i < totalDays; i++) {
-      const progress = totalDays === 1 ? 1 : (i + 1) / totalDays;
-      const value = diff * easeFn(progress);
-      cumulativeTargets[i] = shouldRoundEase ? Math.round(value) : value;
-    }
-
     let appliedShift = 0;
     const plan = [];
 
     for (let i = 0; i < totalDays; i++) {
       const dayDate = new Date(startDate);
       dayDate.setDate(startDate.getDate() + i * direction);
-      let targetShift = cumulativeTargets[i] - appliedShift;
-      if (shouldRoundEase) targetShift = Math.round(targetShift);
-      let shift;
-
-      if (i === totalDays - 1) {
-        shift = diff - appliedShift;
-      } else if (Math.abs(targetShift) > step) {
-        shift = Math.sign(targetShift) * step;
-        const overshoot = targetShift - shift;
-        for (let j = i + 1; j < cumulativeTargets.length; j++) {
-          cumulativeTargets[j] -= overshoot;
-        }
-      } else {
-        shift = targetShift;
-      }
-
-      if (shouldRoundEase) shift = Math.round(shift);
-
+      const remaining = diff - appliedShift;
+      const shift = Math.sign(remaining) * Math.min(step, Math.abs(remaining));
       appliedShift += shift;
 
       const shiftedWake = (currentWake + appliedShift + MINUTES_IN_DAY) % MINUTES_IN_DAY;
