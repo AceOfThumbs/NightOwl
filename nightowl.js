@@ -1411,12 +1411,12 @@
 
       appliedShift += shift;
 
-      const running = (reference + appliedShift + MINUTES_IN_DAY) % MINUTES_IN_DAY;
-      const wake = state.plannerMode === 'wake' ? running : (running + sleepDuration) % MINUTES_IN_DAY;
-      const sleep =
-        state.plannerMode === 'wake'
-          ? (running - sleepDuration + MINUTES_IN_DAY) % MINUTES_IN_DAY
-          : running;
+      const shiftedWake = (currentWake + appliedShift + MINUTES_IN_DAY) % MINUTES_IN_DAY;
+      const shiftedSleep = (shiftedSleepStart + appliedShift + MINUTES_IN_DAY) % MINUTES_IN_DAY;
+      const wake = state.plannerMode === 'wake'
+        ? shiftedWake
+        : (shiftedSleep + sleepDuration) % MINUTES_IN_DAY;
+      const sleep = shiftedSleep;
       const label = dayDate.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
       plan.push({ label, wake, sleep, shift });
     }
