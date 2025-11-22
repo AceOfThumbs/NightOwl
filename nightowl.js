@@ -1358,8 +1358,7 @@
       : minutesDiff(shiftedSleepStart, currentWake);
     const reference = state.plannerMode === 'wake' ? currentWake : shiftedSleepStart;
     const targetMinutes = toMinutes(state.targetTime);
-    let diff = ((targetMinutes - reference + MINUTES_IN_DAY) % MINUTES_IN_DAY + MINUTES_IN_DAY) % MINUTES_IN_DAY;
-    if (diff > MINUTES_IN_DAY / 2) diff -= MINUTES_IN_DAY;
+    let diff = targetMinutes - reference;
     if (state.plannerDirection === 'earlier' && diff > 0) diff -= MINUTES_IN_DAY;
     if (state.plannerDirection === 'later' && diff < 0) diff += MINUTES_IN_DAY;
 
