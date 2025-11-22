@@ -1440,6 +1440,12 @@
     state.plannerMode = mode;
     plannerModeSelect.value = mode;
     plannerModeLabel.textContent = mode === 'wake' ? 'wake' : 'sleep';
+    const targetMinutes = mode === 'wake' ? getYourDayWakeMinutes() : getYourDaySleepMinutes();
+    if (typeof targetMinutes === 'number') {
+      const targetTime = minutesToTime(targetMinutes);
+      state.targetTime = targetTime;
+      if (targetTimeInput) targetTimeInput.value = targetTime;
+    }
     persistState();
     renderNudgePlan();
   }
