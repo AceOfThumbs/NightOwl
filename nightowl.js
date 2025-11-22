@@ -497,6 +497,12 @@
     return normalizeDayMinutes(typeof state.yourDayWakeMinutes === 'number' ? state.yourDayWakeMinutes : fallback);
   }
 
+  function getYourDaySleepMinutes() {
+    const sleepWindow = getSleepWindow();
+    if (!sleepWindow) return null;
+    return mapStandardToRealMinutes(sleepWindow.start);
+  }
+
   function feelsLikeMinutes(nowMinutes) {
     const standardWake = getStandardWakeMinutes();
     const wakeStart = getYourDayWakeMinutes();
@@ -1341,11 +1347,15 @@
       return;
     }
 
-    const sleepWindow = getSleepWindow();
-    const sleepDuration = sleepWindow.duration;
     const currentWake = getYourDayWakeMinutes();
-    const shiftedSleepStart = mapStandardToRealMinutes(sleepWindow.start);
-    const reference = state.plannerMode === 'wake' ? currentWake : shiftedSleepStart;
+    const currentSleep = getYourDaySleepMinutes();
+    if (currentSleep === null) {
+      nudgeCardsEl.innerHTML = '<p class="text-muted">Add a sleep block to enable nudges.</p>';
+      state.nudgePlan = [];
+      state.nudgeDelta = 0;
+      return;
+    }
+    const reference = state.plannerMode === 'wake' ? currentWake : currentSleep;
     const targetMinutes = toMinutes(state.targetTime);
     let diff = ((targetMinutes - reference + MINUTES_IN_DAY) % MINUTES_IN_DAY + MINUTES_IN_DAY) % MINUTES_IN_DAY;
     if (diff > MINUTES_IN_DAY / 2) diff -= MINUTES_IN_DAY;
@@ -1397,12 +1407,8 @@
 
       appliedShift += shift;
 
-      const running = (reference + appliedShift + MINUTES_IN_DAY) % MINUTES_IN_DAY;
-      const wake = state.plannerMode === 'wake' ? running : (running + sleepDuration) % MINUTES_IN_DAY;
-      const sleep =
-        state.plannerMode === 'wake'
-          ? (running - sleepDuration + MINUTES_IN_DAY) % MINUTES_IN_DAY
-          : running;
+      const wake = normalizeDayMinutes(currentWake + appliedShift);
+      const sleep = normalizeDayMinutes(currentSleep + appliedShift);
       const label = dayDate.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
       plan.push({ label, wake, sleep, shift });
     }
