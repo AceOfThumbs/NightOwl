@@ -171,12 +171,6 @@
     return d;
   }
 
-  function shiftDate(date, days) {
-    const shifted = new Date(date);
-    shifted.setDate(shifted.getDate() + days);
-    return shifted;
-  }
-
   function parseLocalDate(value) {
     if (!value) return null;
     const [year, month, day] = String(value).split('-').map(Number);
@@ -1348,48 +1342,67 @@
     }
 
     const sleepWindow = getSleepWindow();
-    const yourDaySleep = getYourDayEvents().find((evt) => evt.type === 'sleep');
+    const sleepDuration = sleepWindow.duration;
     const currentWake = getYourDayWakeMinutes();
-    const shiftedSleepStart = typeof yourDaySleep?.startMin === 'number'
-      ? yourDaySleep.startMin
-      : mapStandardToRealMinutes(sleepWindow.start);
-    const sleepDuration = yourDaySleep
-      ? minutesDiff(yourDaySleep.startMin, yourDaySleep.endMin)
-      : minutesDiff(shiftedSleepStart, currentWake);
+    const shiftedSleepStart = mapStandardToRealMinutes(sleepWindow.start);
     const reference = state.plannerMode === 'wake' ? currentWake : shiftedSleepStart;
     const targetMinutes = toMinutes(state.targetTime);
-    let diff = targetMinutes - reference;
+    let diff = ((targetMinutes - reference + MINUTES_IN_DAY) % MINUTES_IN_DAY + MINUTES_IN_DAY) % MINUTES_IN_DAY;
+    if (diff > MINUTES_IN_DAY / 2) diff -= MINUTES_IN_DAY;
     if (state.plannerDirection === 'earlier' && diff > 0) diff -= MINUTES_IN_DAY;
     if (state.plannerDirection === 'later' && diff < 0) diff += MINUTES_IN_DAY;
 
     const step = clamp(Number(state.dailyStep) || 30, 5, 120);
     const today = startOfDay(getNow());
-    const rawTargetDate = parseLocalDate(state.targetDate) || today;
-    // A sleep target occurs the evening before its calendar date, so shift the
-    // target back one day to count the correct number of nights.
-    const targetDate = state.plannerMode === 'sleep' ? shiftDate(rawTargetDate, -1) : rawTargetDate;
+    const targetDate = parseLocalDate(state.targetDate) || today;
     const direction = targetDate >= today ? 1 : -1;
     const dayMs = 24 * 60 * 60 * 1000;
     const startDate = new Date(today);
     if (targetDate > today) startDate.setDate(startDate.getDate() + 1);
     else if (targetDate < today) startDate.setDate(startDate.getDate() - 1);
     const totalDays = Math.abs(Math.round((targetDate - startDate) / dayMs)) + 1;
+    const easeFn = state.adjustmentCurve === 'curved' ? easeInOut : easeLinear;
+    const shouldRoundEase = true; // Round to whole minutes for all adjustment curves
+    const cumulativeTargets = [];
+
+    for (let i = 0; i < totalDays; i++) {
+      const progress = totalDays === 1 ? 1 : (i + 1) / totalDays;
+      const value = diff * easeFn(progress);
+      cumulativeTargets[i] = shouldRoundEase ? Math.round(value) : value;
+    }
+
     let appliedShift = 0;
     const plan = [];
 
     for (let i = 0; i < totalDays; i++) {
       const dayDate = new Date(startDate);
       dayDate.setDate(startDate.getDate() + i * direction);
-      const remaining = diff - appliedShift;
-      const shift = Math.sign(remaining) * Math.min(step, Math.abs(remaining));
+      let targetShift = cumulativeTargets[i] - appliedShift;
+      if (shouldRoundEase) targetShift = Math.round(targetShift);
+      let shift;
+
+      if (i === totalDays - 1) {
+        shift = diff - appliedShift;
+      } else if (Math.abs(targetShift) > step) {
+        shift = Math.sign(targetShift) * step;
+        const overshoot = targetShift - shift;
+        for (let j = i + 1; j < cumulativeTargets.length; j++) {
+          cumulativeTargets[j] -= overshoot;
+        }
+      } else {
+        shift = targetShift;
+      }
+
+      if (shouldRoundEase) shift = Math.round(shift);
+
       appliedShift += shift;
 
-      const shiftedWake = (currentWake + appliedShift + MINUTES_IN_DAY) % MINUTES_IN_DAY;
-      const shiftedSleep = (shiftedSleepStart + appliedShift + MINUTES_IN_DAY) % MINUTES_IN_DAY;
-      const wake = state.plannerMode === 'wake'
-        ? shiftedWake
-        : (shiftedSleep + sleepDuration) % MINUTES_IN_DAY;
-      const sleep = shiftedSleep;
+      const running = (reference + appliedShift + MINUTES_IN_DAY) % MINUTES_IN_DAY;
+      const wake = state.plannerMode === 'wake' ? running : (running + sleepDuration) % MINUTES_IN_DAY;
+      const sleep =
+        state.plannerMode === 'wake'
+          ? (running - sleepDuration + MINUTES_IN_DAY) % MINUTES_IN_DAY
+          : running;
       const label = dayDate.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
       plan.push({ label, wake, sleep, shift });
     }
