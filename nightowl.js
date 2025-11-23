@@ -56,6 +56,7 @@
   const savePlannerBtn = $('savePlanner');
   const loadPlannerBtn = $('loadPlanner');
   const exportCalendarBtn = $('exportCalendar');
+  const exportPeriodSelect = $('exportPeriod');
   const shareCloseEls = Array.from(document.querySelectorAll('[data-share-close]'));
   const resetStandardDayBtn = $('resetStandardDay');
   const realDayList = $('realDayList');
@@ -1659,15 +1660,12 @@
     return range;
   }
 
-  function promptExportPeriod() {
-    const input = window
-      .prompt('Export which period? Enter “tomorrow”, “this week”, or “full-schedule”.', 'tomorrow')
-      ?.trim()
-      .toLowerCase();
-    if (!input) return null;
-    const normalised = input.replace(/\s+/g, '-');
+  function getSelectedExportPeriod() {
+    if (!exportPeriodSelect) return null;
+    const value = exportPeriodSelect.value?.trim().toLowerCase();
+    const normalised = value?.replace(/\s+/g, '-');
     if (['tomorrow', 'this-week', 'full-schedule'].includes(normalised)) return normalised;
-    showToast('Invalid export period. Try tomorrow, this week, or full-schedule.', 'error');
+    showToast('Choose an export period before exporting.', 'error');
     return null;
   }
 
@@ -1678,7 +1676,7 @@
       showToast('Add events before exporting.', 'error');
       return;
     }
-    const period = promptExportPeriod();
+    const period = getSelectedExportPeriod();
     if (!period) return;
     const { start, days } = getExportRange(period);
     const ics = buildICSContent(events, start, days, state.timeZone);
