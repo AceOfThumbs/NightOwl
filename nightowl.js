@@ -154,7 +154,8 @@
     lockToWake: true,
     standardWakeMinutes: toMinutes('07:00'),
     yourDayWakeMinutes: toMinutes('07:00'),
-    activeTab: 'your'
+    activeTab: 'your',
+    exportPeriod: 'tomorrow'
   };
 
   let yourDayPointerDrag = null;
@@ -1661,10 +1662,13 @@
   }
 
   function getSelectedExportPeriod() {
-    if (!exportPeriodSelect) return null;
+    if (!exportPeriodSelect) return state.exportPeriod;
     const value = exportPeriodSelect.value?.trim().toLowerCase();
     const normalised = value?.replace(/\s+/g, '-');
-    if (['tomorrow', 'this-week', 'full-schedule'].includes(normalised)) return normalised;
+    if (['tomorrow', 'this-week', 'full-schedule'].includes(normalised)) {
+      state.exportPeriod = normalised;
+      return normalised;
+    }
     showToast('Choose an export period before exporting.', 'error');
     return null;
   }
@@ -1875,6 +1879,13 @@
   }
 
   function initExportControls() {
+    if (exportPeriodSelect) {
+      exportPeriodSelect.value = state.exportPeriod;
+      exportPeriodSelect.addEventListener('change', () => {
+        const selected = getSelectedExportPeriod();
+        if (selected) state.exportPeriod = selected;
+      });
+    }
     if (exportCalendarBtn) exportCalendarBtn.addEventListener('click', handleExportCalendar);
   }
 
