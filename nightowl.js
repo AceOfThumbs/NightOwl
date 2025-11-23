@@ -55,6 +55,7 @@
   const sharePlannerBtn = $('sharePlanner');
   const savePlannerBtn = $('savePlanner');
   const loadPlannerBtn = $('loadPlanner');
+  const exportCalendarBtn = $('exportCalendar');
   const shareCloseEls = Array.from(document.querySelectorAll('[data-share-close]'));
   const resetStandardDayBtn = $('resetStandardDay');
   const realDayList = $('realDayList');
@@ -188,6 +189,12 @@
 
   function pad(n) {
     return String(n).padStart(2, '0');
+  }
+
+  function addMinutes(date, minutes) {
+    const next = new Date(date);
+    next.setMinutes(next.getMinutes() + minutes);
+    return next;
   }
 
   function toMinutes(time) {
@@ -415,6 +422,13 @@
   function minutesInZone(date, tz) {
     const { hours, minutes } = toTimeInZone(date, tz);
     return (hours * 60 + minutes) % MINUTES_IN_DAY;
+  }
+
+  function zonedTimeToUtc(date, timeZone) {
+    if (!timeZone || timeZone === 'local') return new Date(date);
+    const zonedDate = new Date(date.toLocaleString('en-US', { timeZone }));
+    const diff = date.getTime() - zonedDate.getTime();
+    return new Date(date.getTime() - diff);
   }
 
   function rotatePoint(mins, radius, center, offset = 0) {
@@ -1567,6 +1581,111 @@
       .catch(() => showToast('Unable to copy to clipboard', 'error'));
   }
 
+  function escapeICSValue(value) {
+    return String(value || '')
+      .replace(/\\/g, '\\\\')
+      .replace(/,/g, '\\,')
+      .replace(/;/g, '\\;')
+      .replace(/\n/g, '\\n');
+  }
+
+  function formatICSDateTime(date) {
+    const d = new Date(date);
+    return `${d.getUTCFullYear()}${pad(d.getUTCMonth() + 1)}${pad(d.getUTCDate())}T${pad(d.getUTCHours())}${pad(d.getUTCMinutes())}${pad(d.getUTCSeconds())}Z`;
+  }
+
+  function downloadICS(content, filename) {
+    const blob = new Blob([content], { type: 'text/calendar' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    link.click();
+    URL.revokeObjectURL(url);
+  }
+
+  function buildICSContent(events, startDate, days, timeZone) {
+    const tzid = timeZone === 'local' ? Intl.DateTimeFormat().resolvedOptions().timeZone || 'local' : timeZone;
+    const dtstamp = formatICSDateTime(new Date());
+    const lines = [
+      'BEGIN:VCALENDAR',
+      'VERSION:2.0',
+      'PRODID:-//NightOwl//Nudge Planner//EN',
+      'CALSCALE:GREGORIAN',
+      'X-WR-CALNAME:NightOwl Your Day',
+      `X-WR-TIMEZONE:${tzid}`
+    ];
+
+    const base = startOfDay(startDate);
+    for (let day = 0; day < days; day++) {
+      const dayDate = new Date(base);
+      dayDate.setDate(base.getDate() + day);
+      events.forEach((evt, idx) => {
+        const duration = typeof evt.duration === 'number' ? evt.duration : minutesDiff(evt.startMin, evt.endMin);
+        const startLocal = new Date(dayDate);
+        startLocal.setMinutes(evt.startMin);
+        const startUtc = zonedTimeToUtc(startLocal, timeZone);
+        const endUtc = zonedTimeToUtc(addMinutes(startLocal, duration), timeZone);
+        const uid = `${evt.id || 'nightowl'}-${day}-${idx}@nightowl.app`;
+        const summary = `${eventTypes[evt.type]?.icon || '⭐'} ${evt.title}`;
+        const description = `Exported from NightOwl Nudge Planner · ${eventTypes[evt.type]?.label || 'Event'}`;
+        lines.push('BEGIN:VEVENT');
+        lines.push(`UID:${uid}`);
+        lines.push(`DTSTAMP:${dtstamp}`);
+        lines.push(`DTSTART:${formatICSDateTime(startUtc)}`);
+        lines.push(`DTEND:${formatICSDateTime(endUtc)}`);
+        lines.push(`SUMMARY:${escapeICSValue(summary)}`);
+        lines.push(`DESCRIPTION:${escapeICSValue(description)}`);
+        lines.push('END:VEVENT');
+      });
+    }
+
+    lines.push('END:VCALENDAR');
+    return lines.join('\r\n');
+  }
+
+  function getExportRange(period) {
+    const today = startOfDay(getNow());
+    const range = { start: today, days: 7 };
+    if (period === 'tomorrow') {
+      range.start = new Date(today);
+      range.start.setDate(range.start.getDate() + 1);
+      range.days = 1;
+    } else if (period === 'full-schedule') {
+      range.start = today;
+      range.days = Math.max(state.nudgePlan.length || 0, 14);
+    }
+    return range;
+  }
+
+  function promptExportPeriod() {
+    const input = window
+      .prompt('Export which period? Enter “tomorrow”, “this week”, or “full-schedule”.', 'tomorrow')
+      ?.trim()
+      .toLowerCase();
+    if (!input) return null;
+    const normalised = input.replace(/\s+/g, '-');
+    if (['tomorrow', 'this-week', 'full-schedule'].includes(normalised)) return normalised;
+    showToast('Invalid export period. Try tomorrow, this week, or full-schedule.', 'error');
+    return null;
+  }
+
+  function handleExportCalendar() {
+    if (!exportCalendarBtn) return;
+    const events = getYourDayEvents();
+    if (!events.length) {
+      showToast('Add events before exporting.', 'error');
+      return;
+    }
+    const period = promptExportPeriod();
+    if (!period) return;
+    const { start, days } = getExportRange(period);
+    const ics = buildICSContent(events, start, days, state.timeZone);
+    const filename = `nightowl-${period}.ics`;
+    downloadICS(ics, filename);
+    showToast('Calendar file created. Import into your calendar app.', 'success');
+  }
+
   function buildPlannerSnapshot(includeEvents) {
     return {
       version: 1,
@@ -1741,6 +1860,10 @@
     if (shareCopyCodeBtn) shareCopyCodeBtn.addEventListener('click', handleShareCopyCode);
   }
 
+  function initExportControls() {
+    if (exportCalendarBtn) exportCalendarBtn.addEventListener('click', handleExportCalendar);
+  }
+
   function initAdvancedAccordion() {
     advancedToggle.addEventListener('click', () => {
       const expanded = advancedToggle.getAttribute('aria-expanded') === 'true';
@@ -1892,6 +2015,7 @@
     initLockToggle();
     initYourDayWakeInput();
     initShareControls();
+    initExportControls();
     initStandardDayControls();
     render();
     setInterval(() => {
