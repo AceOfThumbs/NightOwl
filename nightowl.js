@@ -1647,9 +1647,10 @@
     const wakeMinutes = typeof planEntry?.wake === 'number' ? planEntry.wake : getYourDayWakeMinutes();
     const delta = signedDelta(getStandardWakeMinutes(), wakeMinutes);
     const shiftedEvents = state.events.map((evt) => ({ ...shiftEvent(evt, delta), baseStart: evt.startMin }));
+    const wakeSleepEvents = shiftedEvents.filter((evt) => evt.type === 'wake' || evt.type === 'sleep');
     const filteredEvents = state.exportAllEvents
-      ? shiftedEvents
-      : shiftedEvents.filter((evt) => evt.type === 'wake' || evt.type === 'sleep');
+      ? [...wakeSleepEvents, ...shiftedEvents.filter((evt) => evt.type !== 'wake' && evt.type !== 'sleep')]
+      : wakeSleepEvents;
     const dayLabel =
       planEntry?.label || date.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
     const shift =
