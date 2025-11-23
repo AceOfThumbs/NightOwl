@@ -1598,11 +1598,12 @@
   }
 
   function downloadICS(content, filename) {
-    const blob = new Blob([content], { type: 'text/calendar' });
-    const url = URL.createObjectURL(blob);
+    const calendarFile = new File([content], filename, { type: 'text/calendar;charset=utf-8' });
+    const url = URL.createObjectURL(calendarFile);
     const link = document.createElement('a');
     link.href = url;
     link.download = filename;
+    link.type = 'text/calendar';
     link.click();
     URL.revokeObjectURL(url);
   }
