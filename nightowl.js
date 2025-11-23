@@ -63,6 +63,7 @@
   const tabButtons = Array.from(document.querySelectorAll('[data-tab]'));
   const yourDayTabPanel = $('yourDayTab');
   const standardDayTabPanel = $('standardDayTab');
+  let shareKeyListenerAttached = false;
 
   const timezoneLocations = {
     local: { label: 'Local', lat: 40.7128, lon: -74.006 },
@@ -1792,12 +1793,18 @@
     updateShareDialog();
     shareLayer.hidden = false;
     if (shareLinkInput) shareLinkInput.focus();
-    document.addEventListener('keydown', handleShareKeydown);
+    if (!shareKeyListenerAttached) {
+      document.addEventListener('keydown', handleShareKeydown);
+      shareKeyListenerAttached = true;
+    }
   }
 
   function closeShareDialog() {
     if (shareLayer) shareLayer.hidden = true;
-    document.removeEventListener('keydown', handleShareKeydown);
+    if (shareKeyListenerAttached) {
+      document.removeEventListener('keydown', handleShareKeydown);
+      shareKeyListenerAttached = false;
+    }
   }
 
   function handleShareCopyLink() {
