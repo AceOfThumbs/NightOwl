@@ -210,7 +210,17 @@
             <button id="loadPlanner" class="btn btn-secondary" type="button">Load</button>
             <button id="savePlanner" class="btn btn-secondary" type="button">Save</button>
             <button id="sharePlanner" class="btn btn-primary" type="button">Share</button>
-            <button id="exportCalendar" class="btn btn-secondary" type="button">Export to Calendar</button>
+            <div class="export-controls">
+              <label class="field">
+                <span class="field-label">Export period</span>
+                <select id="exportPeriod">
+                  <option value="tomorrow">Tomorrow</option>
+                  <option value="this-week">This week</option>
+                  <option value="full-schedule">Full schedule</option>
+                </select>
+              </label>
+              <button id="exportCalendar" class="btn btn-secondary" type="button">Export to Calendar</button>
+            </div>
           </div>
           <div class="nudge-cards" id="nudgeCards" aria-live="polite"></div>
         </section>
