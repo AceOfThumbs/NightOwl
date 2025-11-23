@@ -1660,7 +1660,15 @@
       range.days = 1;
     } else if (period === 'full-schedule') {
       range.start = today;
-      range.days = Math.max(state.nudgePlan.length || 0, 14);
+      const targetDate = parseLocalDate(state.targetDate);
+      if (targetDate) {
+        const targetDay = startOfDay(targetDate);
+        const dayMs = 24 * 60 * 60 * 1000;
+        const diffDays = Math.floor((targetDay - range.start) / dayMs);
+        range.days = Math.max(1, diffDays + 1);
+      } else {
+        range.days = Math.max(state.nudgePlan.length || 0, 14);
+      }
     }
     return range;
   }
