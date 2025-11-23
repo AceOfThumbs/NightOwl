@@ -1792,10 +1792,12 @@
     updateShareDialog();
     shareLayer.hidden = false;
     if (shareLinkInput) shareLinkInput.focus();
+    document.addEventListener('keydown', handleShareKeydown);
   }
 
   function closeShareDialog() {
     if (shareLayer) shareLayer.hidden = true;
+    document.removeEventListener('keydown', handleShareKeydown);
   }
 
   function handleShareCopyLink() {
@@ -1858,6 +1860,13 @@
     if (shareIncludeEventsToggle) shareIncludeEventsToggle.addEventListener('change', updateShareDialog);
     if (shareCopyLinkBtn) shareCopyLinkBtn.addEventListener('click', handleShareCopyLink);
     if (shareCopyCodeBtn) shareCopyCodeBtn.addEventListener('click', handleShareCopyCode);
+  }
+
+  function handleShareKeydown(evt) {
+    if (!shareLayer) return;
+    if (evt.key === 'Escape' && !shareLayer.hidden) {
+      closeShareDialog();
+    }
   }
 
   function initExportControls() {
