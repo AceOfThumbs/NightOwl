@@ -63,6 +63,7 @@
   const tabButtons = Array.from(document.querySelectorAll('[data-tab]'));
   const yourDayTabPanel = $('yourDayTab');
   const standardDayTabPanel = $('standardDayTab');
+  let shareKeyListenerAttached = false;
 
   const timezoneLocations = {
     local: { label: 'Local', lat: 40.7128, lon: -74.006 },
@@ -1792,10 +1793,18 @@
     updateShareDialog();
     shareLayer.hidden = false;
     if (shareLinkInput) shareLinkInput.focus();
+    if (!shareKeyListenerAttached) {
+      document.addEventListener('keydown', handleShareKeydown);
+      shareKeyListenerAttached = true;
+    }
   }
 
   function closeShareDialog() {
     if (shareLayer) shareLayer.hidden = true;
+    if (shareKeyListenerAttached) {
+      document.removeEventListener('keydown', handleShareKeydown);
+      shareKeyListenerAttached = false;
+    }
   }
 
   function handleShareCopyLink() {
@@ -1858,6 +1867,13 @@
     if (shareIncludeEventsToggle) shareIncludeEventsToggle.addEventListener('change', updateShareDialog);
     if (shareCopyLinkBtn) shareCopyLinkBtn.addEventListener('click', handleShareCopyLink);
     if (shareCopyCodeBtn) shareCopyCodeBtn.addEventListener('click', handleShareCopyCode);
+  }
+
+  function handleShareKeydown(evt) {
+    if (!shareLayer) return;
+    if (evt.key === 'Escape' && !shareLayer.hidden) {
+      closeShareDialog();
+    }
   }
 
   function initExportControls() {
