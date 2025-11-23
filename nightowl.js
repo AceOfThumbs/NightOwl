@@ -57,6 +57,7 @@
   const loadPlannerBtn = $('loadPlanner');
   const exportCalendarBtn = $('exportCalendar');
   const exportPeriodSelect = $('exportPeriod');
+  const exportAllEventsToggle = $('exportAllEvents');
   const shareCloseEls = Array.from(document.querySelectorAll('[data-share-close]'));
   const resetStandardDayBtn = $('resetStandardDay');
   const realDayList = $('realDayList');
@@ -155,7 +156,8 @@
     standardWakeMinutes: toMinutes('07:00'),
     yourDayWakeMinutes: toMinutes('07:00'),
     activeTab: 'your',
-    exportPeriod: 'tomorrow'
+    exportPeriod: 'tomorrow',
+    exportAllEvents: false
   };
 
   let yourDayPointerDrag = null;
@@ -279,6 +281,7 @@
         state.adjustmentCurve = prefs.adjustmentCurve === 'curved' ? 'curved' : 'linear';
         state.timeFormat = prefs.timeFormat === '12h' ? '12h' : '24h';
         state.shareIncludeEvents = Boolean(prefs.shareIncludeEvents);
+        state.exportAllEvents = prefs.exportAllEvents === true;
         state.lockToWake = prefs.lockToWake !== false;
         state.standardWakeMinutes = normalizeDayMinutes(
           typeof prefs.standardWakeMinutes === 'number' ? prefs.standardWakeMinutes : state.standardWakeMinutes
@@ -323,6 +326,7 @@
         adjustmentCurve: state.adjustmentCurve,
         timeFormat: state.timeFormat,
         shareIncludeEvents: state.shareIncludeEvents,
+        exportAllEvents: state.exportAllEvents,
         lockToWake: state.lockToWake,
         standardWakeMinutes: state.standardWakeMinutes,
         yourDayWakeMinutes: state.yourDayWakeMinutes,
@@ -1426,8 +1430,9 @@
 
       const wake = normalizeDayMinutes(currentWake + appliedShift);
       const sleep = normalizeDayMinutes(currentSleep + appliedShift);
+      dayDate.setHours(0, 0, 0, 0);
       const label = dayDate.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
-      plan.push({ label, wake, sleep, shift });
+      plan.push({ label, wake, sleep, shift, date: dayDate.toISOString() });
     }
 
     state.nudgePlan = plan;
@@ -1611,7 +1616,50 @@
     URL.revokeObjectURL(url);
   }
 
-  function buildICSContent(events, startDate, days, timeZone) {
+  function normalizePlanDate(value) {
+    if (!value) return null;
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return null;
+    date.setHours(0, 0, 0, 0);
+    return date;
+  }
+
+  function getPlanEntryForDate(date) {
+    const target = normalizePlanDate(date);
+    const entries = state.nudgePlan
+      .map((entry) => ({ ...entry, day: normalizePlanDate(entry.date) }))
+      .filter((entry) => entry.day);
+    if (!target || !entries.length) return null;
+    const exact = entries.find((entry) => entry.day.getTime() === target.getTime());
+    if (exact) return exact;
+    return entries.reduce((closest, entry) => {
+      if (!closest) return entry;
+      const diff = Math.abs(entry.day - target);
+      const best = Math.abs(closest.day - target);
+      if (diff < best) return entry;
+      if (diff === best && entry.day < closest.day) return entry;
+      return closest;
+    }, null);
+  }
+
+  function buildExportEventsForDate(date) {
+    const planEntry = getPlanEntryForDate(date);
+    const wakeMinutes = typeof planEntry?.wake === 'number' ? planEntry.wake : getYourDayWakeMinutes();
+    const delta = signedDelta(getStandardWakeMinutes(), wakeMinutes);
+    const shiftedEvents = state.events.map((evt) => ({ ...shiftEvent(evt, delta), baseStart: evt.startMin }));
+    const filteredEvents = state.exportAllEvents
+      ? shiftedEvents
+      : shiftedEvents.filter((evt) => evt.type === 'wake' || evt.type === 'sleep');
+    const dayLabel =
+      planEntry?.label || date.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
+    const shift =
+      typeof planEntry?.shift === 'number'
+        ? planEntry.shift
+        : signedDelta(getYourDayWakeMinutes(), wakeMinutes);
+    return { events: filteredEvents, planEntry, dayLabel, shift };
+  }
+
+  function buildICSContent(startDate, days, timeZone) {
     const tzid = timeZone === 'local' ? Intl.DateTimeFormat().resolvedOptions().timeZone || 'local' : timeZone;
     const dtstamp = formatICSDateTime(new Date());
     const lines = [
@@ -1627,15 +1675,17 @@
     for (let day = 0; day < days; day++) {
       const dayDate = new Date(base);
       dayDate.setDate(base.getDate() + day);
-      events.forEach((evt, idx) => {
+      const { events: dayEvents, dayLabel, shift } = buildExportEventsForDate(dayDate);
+      const shiftText = formatShiftMinutes(shift || 0);
+      dayEvents.forEach((evt, idx) => {
         const duration = typeof evt.duration === 'number' ? evt.duration : minutesDiff(evt.startMin, evt.endMin);
         const startLocal = new Date(dayDate);
         startLocal.setMinutes(evt.startMin);
         const startUtc = zonedTimeToUtc(startLocal, timeZone);
         const endUtc = zonedTimeToUtc(addMinutes(startLocal, duration), timeZone);
         const uid = `${evt.id || 'nightowl'}-${day}-${idx}@nightowl.app`;
-        const summary = `${eventTypes[evt.type]?.icon || '⭐'} ${evt.title}`;
-        const description = `Exported from NightOwl Nudge Planner · ${eventTypes[evt.type]?.label || 'Event'}`;
+        const summary = `${eventTypes[evt.type]?.icon || '⭐'} ${evt.title} · ${shiftText}`;
+        const description = `Exported from NightOwl Nudge Planner · ${dayLabel} · ${shiftText} · ${eventTypes[evt.type]?.label || 'Event'}`;
         lines.push('BEGIN:VEVENT');
         lines.push(`UID:${uid}`);
         lines.push(`DTSTAMP:${dtstamp}`);
@@ -1687,15 +1737,14 @@
 
   function handleExportCalendar() {
     if (!exportCalendarBtn) return;
-    const events = getYourDayEvents();
-    if (!events.length) {
+    if (!state.events.length) {
       showToast('Add events before exporting.', 'error');
       return;
     }
     const period = getSelectedExportPeriod();
     if (!period) return;
     const { start, days } = getExportRange(period);
-    const ics = buildICSContent(events, start, days, state.timeZone);
+    const ics = buildICSContent(start, days, state.timeZone);
     const filename = `nightowl-${period}.ics`;
     downloadICS(ics, filename);
     showToast('Calendar file created. Import into your calendar app.', 'success');
@@ -1896,6 +1945,13 @@
       exportPeriodSelect.addEventListener('change', () => {
         const selected = getSelectedExportPeriod();
         if (selected) state.exportPeriod = selected;
+      });
+    }
+    if (exportAllEventsToggle) {
+      exportAllEventsToggle.checked = !!state.exportAllEvents;
+      exportAllEventsToggle.addEventListener('change', (evt) => {
+        state.exportAllEvents = evt.target.checked;
+        persistState();
       });
     }
     if (exportCalendarBtn) exportCalendarBtn.addEventListener('click', handleExportCalendar);
