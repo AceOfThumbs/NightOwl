@@ -262,6 +262,12 @@ textarea {
 
 .panel-tabs {
   gap: var(--space-5);
+  grid-column: 1 / span 2;
+  align-self: start;
+}
+
+.panel-head--tabs {
+  justify-content: flex-start;
 }
 
 .tab-list {
@@ -717,6 +723,33 @@ select {
   width: 100%;
 }
 
+.curve-checkboxes {
+  gap: var(--space-2);
+}
+
+.curve-checkboxes__options {
+  display: flex;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.checkbox {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  background: var(--card-alt);
+  border: 1px solid var(--muted);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  color: var(--text-1);
+}
+
+.checkbox input {
+  width: 18px;
+  height: 18px;
+}
+
 .field-slider input[type="range"] {
   width: 100%;
   accent-color: var(--accent);
@@ -760,6 +793,10 @@ select {
 .export-controls .field {
   margin: 0;
   min-width: 180px;
+}
+
+.export-controls .btn {
+  min-width: 210px;
 }
 
 .panel-advanced {
