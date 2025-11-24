@@ -30,12 +30,8 @@
       </header>
 
       <main class="layout">
-        <section class="panel panel-tabs" aria-labelledby="clockTabsTitle">
-          <header class="panel-head panel-head--split">
-            <div>
-              <h2 id="clockTabsTitle">Clock</h2>
-              <p class="text-muted">Jump between Standard Day and Your Day to edit wake time or rearrange events.</p>
-            </div>
+        <section class="panel panel-tabs" aria-label="Your Day views">
+          <header class="panel-head panel-head--tabs">
             <div class="tab-list" role="tablist" aria-label="Clock view">
               <button
                 id="tabYourDay"
@@ -64,14 +60,11 @@
 
           <div class="tab-panels">
             <div id="yourDayTab" class="tab-panel" role="tabpanel" aria-labelledby="tabYourDay">
-              <section class="panel panel-clock" aria-labelledby="yourDayClockTitle">
-                <header class="panel-head">
-                  <h3 id="yourDayClockTitle">Your Day clock</h3>
-                  <div class="clock-meta" aria-live="polite">
-                    <span class="clock-meta__feels" id="yourFeelsLikeLabel"></span>
-                    <span class="clock-meta__now" id="yourNowLabel"></span>
-                  </div>
-                </header>
+              <section class="panel panel-clock" aria-label="Your Day clock">
+                <div class="clock-meta" aria-live="polite">
+                  <span class="clock-meta__feels" id="yourFeelsLikeLabel"></span>
+                  <span class="clock-meta__now" id="yourNowLabel"></span>
+                </div>
                 <div class="clock-stage">
                   <div class="day-ring" role="application" aria-label="Your Day clock">
                     <svg id="yourDayRing" viewBox="0 0 400 400" aria-hidden="true"></svg>
@@ -185,13 +178,19 @@
                 <option value="sleep">Sleep time</option>
               </select>
             </label>
-            <label class="field">
+            <div class="field curve-checkboxes" role="group" aria-label="Adjustment style">
               <span class="field-label">Adjustment style</span>
-              <select id="adjustmentCurve">
-                <option value="linear">Linear</option>
-                <option value="curved">Curved ease</option>
-              </select>
-            </label>
+              <div class="curve-checkboxes__options">
+                <label class="checkbox">
+                  <input id="startSlowToggle" type="checkbox" />
+                  <span>Start Slow</span>
+                </label>
+                <label class="checkbox">
+                  <input id="endSlowToggle" type="checkbox" />
+                  <span>End Slow</span>
+                </label>
+              </div>
+            </div>
             <label class="field">
               <span class="field-label">Time zone</span>
               <select id="timeZone"></select>
@@ -209,7 +208,7 @@
           <div class="nudge-actions" role="group" aria-label="Planner actions">
             <button id="loadPlanner" class="btn btn-secondary" type="button">Load</button>
             <button id="savePlanner" class="btn btn-secondary" type="button">Save</button>
-            <button id="sharePlanner" class="btn btn-primary" type="button">Share</button>
+            <button id="sharePlanner" class="btn btn-secondary" type="button">Share</button>
             <div class="export-controls">
               <label class="field">
                 <span class="field-label">Export period</span>
@@ -220,11 +219,8 @@
                   <option value="full-schedule">Full schedule</option>
                 </select>
               </label>
-              <label class="toggle">
-                <input id="exportAllEvents" type="checkbox" />
-                <span class="toggle__label">Export Your Day</span>
-              </label>
-              <button id="exportCalendar" class="btn btn-secondary" type="button">Export to Calendar</button>
+              <button id="exportWakeSleep" class="btn btn-secondary" type="button">Wake/Sleep to Calendar</button>
+              <button id="exportAllEventsCalendar" class="btn btn-secondary" type="button">Export All events to Calendar</button>
             </div>
           </div>
           <div class="nudge-cards" id="nudgeCards" aria-live="polite"></div>
