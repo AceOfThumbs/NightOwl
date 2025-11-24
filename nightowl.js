@@ -30,7 +30,8 @@
   const dailyStepRange = $('dailyStep');
   const dailyStepLabel = $('dailyStepLabel');
   const nudgeCardsEl = $('nudgeCards');
-  const adjustmentCurveSelect = $('adjustmentCurve');
+  const startSlowToggle = $('startSlowToggle');
+  const endSlowToggle = $('endSlowToggle');
   const segmentBtns = Array.from(document.querySelectorAll('.segment-btn'));
   const textScaleDown = $('textScaleDown');
   const textScaleUp = $('textScaleUp');
@@ -56,9 +57,9 @@
   const sharePlannerBtn = $('sharePlanner');
   const savePlannerBtn = $('savePlanner');
   const loadPlannerBtn = $('loadPlanner');
-  const exportCalendarBtn = $('exportCalendar');
+  const exportWakeSleepBtn = $('exportWakeSleep');
+  const exportAllEventsBtn = $('exportAllEventsCalendar');
   const exportPeriodSelect = $('exportPeriod');
-  const exportAllEventsToggle = $('exportAllEvents');
   const shareCloseEls = Array.from(document.querySelectorAll('[data-share-close]'));
   const resetStandardDayBtn = $('resetStandardDay');
   const realDayList = $('realDayList');
@@ -145,7 +146,8 @@
     targetTime: '07:30',
     targetDate: null,
     dailyStep: 30,
-    adjustmentCurve: 'linear',
+    startSlow: false,
+    endSlow: false,
     nudgeDelta: 0,
     nudgePlan: [],
     textScale: 1,
@@ -157,7 +159,7 @@
     standardWakeMinutes: toMinutes('07:00'),
     yourDayWakeMinutes: toMinutes('07:00'),
     activeTab: 'your',
-    exportPeriod: 'tomorrow',
+    exportPeriod: 'full-schedule',
     exportAllEvents: false
   };
 
@@ -279,10 +281,22 @@
         state.dailyStep = clamp(Number(prefs.dailyStep) || state.dailyStep, 5, 120);
         state.plannerMode = prefs.plannerMode || state.plannerMode;
         state.plannerDirection = prefs.plannerDirection || state.plannerDirection;
-        state.adjustmentCurve = prefs.adjustmentCurve === 'curved' ? 'curved' : 'linear';
+        if (typeof prefs.startSlow === 'boolean' || typeof prefs.endSlow === 'boolean') {
+          state.startSlow = !!prefs.startSlow;
+          state.endSlow = !!prefs.endSlow;
+        } else if (prefs.adjustmentCurve === 'curved') {
+          state.startSlow = true;
+          state.endSlow = true;
+        } else {
+          state.startSlow = false;
+          state.endSlow = false;
+        }
         state.timeFormat = prefs.timeFormat === '12h' ? '12h' : '24h';
         state.shareIncludeEvents = Boolean(prefs.shareIncludeEvents);
         state.exportAllEvents = prefs.exportAllEvents === true;
+        if (['today', 'tomorrow', 'this-week', 'full-schedule'].includes(prefs.exportPeriod)) {
+          state.exportPeriod = prefs.exportPeriod;
+        }
         state.lockToWake = prefs.lockToWake !== false;
         state.standardWakeMinutes = normalizeDayMinutes(
           typeof prefs.standardWakeMinutes === 'number' ? prefs.standardWakeMinutes : state.standardWakeMinutes
@@ -324,10 +338,12 @@
         dailyStep: state.dailyStep,
         plannerMode: state.plannerMode,
         plannerDirection: state.plannerDirection,
-        adjustmentCurve: state.adjustmentCurve,
+        startSlow: state.startSlow,
+        endSlow: state.endSlow,
         timeFormat: state.timeFormat,
         shareIncludeEvents: state.shareIncludeEvents,
         exportAllEvents: state.exportAllEvents,
+        exportPeriod: state.exportPeriod,
         lockToWake: state.lockToWake,
         standardWakeMinutes: state.standardWakeMinutes,
         yourDayWakeMinutes: state.yourDayWakeMinutes,
@@ -776,20 +792,36 @@
 
   function renderYourDayMarkers(events, center, radius) {
     const wake = events.find((evt) => evt.type === 'wake');
+    const markerStarts = new Map();
     events.forEach((evt) => {
       if (evt.type === 'wake') return;
-      const angle = (evt.startMin / MINUTES_IN_DAY) * 2 * Math.PI;
+      const key = evt.startMin;
+      if (!markerStarts.has(key)) markerStarts.set(key, []);
+      markerStarts.get(key).push(evt);
+    });
+
+    markerStarts.forEach((group) => {
+      if (!group.length) return;
+      const angle = (group[0].startMin / MINUTES_IN_DAY) * 2 * Math.PI;
       const cos = Math.cos(angle - Math.PI / 2);
       const sin = Math.sin(angle - Math.PI / 2);
-      const marker = createSVG('line', {
-        x1: center + cos * (radius - 22),
-        y1: center + sin * (radius - 22),
-        x2: center + cos * (radius + 6),
-        y2: center + sin * (radius + 6),
-        class: 'your-day-marker',
-        'data-type': evt.type
+      const startRadius = radius - 22;
+      const endRadius = radius + 6;
+      const segmentLength = (endRadius - startRadius) / group.length;
+
+      group.forEach((evt, idx) => {
+        const inner = startRadius + segmentLength * idx;
+        const outer = idx === group.length - 1 ? endRadius : startRadius + segmentLength * (idx + 1);
+        const marker = createSVG('line', {
+          x1: center + cos * inner,
+          y1: center + sin * inner,
+          x2: center + cos * outer,
+          y2: center + sin * outer,
+          class: 'your-day-marker',
+          'data-type': evt.type
+        });
+        yourDayRing.appendChild(marker);
       });
-      yourDayRing.appendChild(marker);
     });
 
     if (wake) {
@@ -1370,6 +1402,22 @@
     return 0.5 - 0.5 * Math.cos(Math.PI * t);
   }
 
+  function easeIn(t) {
+    return t * t;
+  }
+
+  function easeOut(t) {
+    const inv = 1 - t;
+    return 1 - inv * inv;
+  }
+
+  function getAdjustmentEase() {
+    if (state.startSlow && state.endSlow) return easeInOut;
+    if (state.startSlow) return easeIn;
+    if (state.endSlow) return easeOut;
+    return easeLinear;
+  }
+
   function formatShiftMinutes(value) {
     const rounded = Math.round(value * 10) / 10;
     if (Math.abs(rounded) < 0.05) return 'Shift 0 min';
@@ -1410,7 +1458,7 @@
     if (targetDate > today) startDate.setDate(startDate.getDate() + 1);
     else if (targetDate < today) startDate.setDate(startDate.getDate() - 1);
     const totalDays = Math.abs(Math.round((targetDate - startDate) / dayMs)) + 1;
-    const easeFn = state.adjustmentCurve === 'curved' ? easeInOut : easeLinear;
+    const easeFn = getAdjustmentEase();
     const shouldRoundEase = true; // Round to whole minutes for all adjustment curves
     const cumulativeTargets = [];
 
@@ -1490,9 +1538,9 @@
     renderNudgePlan();
   }
 
-  function updateAdjustmentCurve(value) {
-    state.adjustmentCurve = value === 'curved' ? 'curved' : 'linear';
-    if (adjustmentCurveSelect) adjustmentCurveSelect.value = state.adjustmentCurve;
+  function updateCurveSetting(key, checked) {
+    state[key] = checked;
+    syncCurveControls();
     persistState();
     renderNudgePlan();
   }
@@ -1518,14 +1566,19 @@
     renderNudgePlan();
   }
 
+  function syncCurveControls() {
+    if (startSlowToggle) startSlowToggle.checked = !!state.startSlow;
+    if (endSlowToggle) endSlowToggle.checked = !!state.endSlow;
+  }
+
   function syncPlannerControls() {
     plannerModeSelect.value = state.plannerMode;
     plannerModeLabel.textContent = state.plannerMode === 'wake' ? 'wake' : 'sleep';
     targetTimeInput.value = state.targetTime;
     targetDateInput.value = state.targetDate;
+    syncCurveControls();
     dailyStepRange.value = state.dailyStep;
     dailyStepLabel.textContent = `±${state.dailyStep} min`;
-    if (adjustmentCurveSelect) adjustmentCurveSelect.value = state.adjustmentCurve;
     segmentBtns.forEach((btn) => btn.setAttribute('aria-checked', btn.dataset.dir === state.plannerDirection ? 'true' : 'false'));
     if (shareIncludeEventsToggle) shareIncludeEventsToggle.checked = !!state.shareIncludeEvents;
     if (lockWakeToggle) lockWakeToggle.checked = !!state.lockToWake;
@@ -1670,13 +1723,13 @@
     return MIN_EXPORT_DURATION;
   }
 
-  function buildExportEventsForDate(date) {
+  function buildExportEventsForDate(date, includeAllEvents = state.exportAllEvents) {
     const planEntry = getPlanEntryForDate(date);
     const wakeMinutes = typeof planEntry?.wake === 'number' ? planEntry.wake : getYourDayWakeMinutes();
     const delta = signedDelta(getStandardWakeMinutes(), wakeMinutes);
     const shiftedEvents = state.events.map((evt) => ({ ...shiftEvent(evt, delta), baseStart: evt.startMin }));
     const wakeSleepEvents = shiftedEvents.filter((evt) => evt.type === 'wake' || evt.type === 'sleep');
-    const filteredEvents = state.exportAllEvents
+    const filteredEvents = includeAllEvents
       ? [...wakeSleepEvents, ...shiftedEvents.filter((evt) => evt.type !== 'wake' && evt.type !== 'sleep')]
       : wakeSleepEvents;
     const dayLabel =
@@ -1688,7 +1741,7 @@
     return { events: filteredEvents, planEntry, dayLabel, shift };
   }
 
-  function buildICSContent(startDate, days, timeZone) {
+  function buildICSContent(startDate, days, timeZone, includeAllEvents = state.exportAllEvents) {
     const tzid = timeZone === 'local' ? Intl.DateTimeFormat().resolvedOptions().timeZone || 'local' : timeZone;
     const dtstamp = formatICSDateTime(new Date());
     const lines = [
@@ -1704,7 +1757,7 @@
     for (let day = 0; day < days; day++) {
       const dayDate = new Date(base);
       dayDate.setDate(base.getDate() + day);
-      const { events: dayEvents, dayLabel, shift } = buildExportEventsForDate(dayDate);
+      const { events: dayEvents, dayLabel, shift } = buildExportEventsForDate(dayDate, includeAllEvents);
       const shiftText = formatShiftMinutes(shift || 0);
       dayEvents.forEach((evt, idx) => {
         const duration = getExportDuration(evt);
@@ -1774,8 +1827,9 @@
     return null;
   }
 
-  function handleExportCalendar() {
-    if (!exportCalendarBtn) return;
+  function handleExportCalendar(includeAllEvents) {
+    state.exportAllEvents = !!includeAllEvents;
+    persistState();
     if (!state.events.length) {
       showToast('Add events before exporting.', 'error');
       return;
@@ -1783,7 +1837,7 @@
     const period = getSelectedExportPeriod();
     if (!period) return;
     const { start, days } = getExportRange(period);
-    const ics = buildICSContent(start, days, state.timeZone);
+    const ics = buildICSContent(start, days, state.timeZone, includeAllEvents);
     const filename = `nightowl-${period}.ics`;
     downloadICS(ics, filename);
     showToast('Calendar file created. Import into your calendar app.', 'success');
@@ -1798,7 +1852,8 @@
         targetTime: state.targetTime,
         targetDate: state.targetDate,
         dailyStep: state.dailyStep,
-        adjustmentCurve: state.adjustmentCurve,
+        startSlow: state.startSlow,
+        endSlow: state.endSlow,
         timeZone: state.timeZone,
         timeFormat: state.timeFormat
       },
@@ -1846,7 +1901,16 @@
     state.targetTime = planner.targetTime || state.targetTime;
     state.targetDate = planner.targetDate || state.targetDate;
     state.dailyStep = clamp(Number(planner.dailyStep) || state.dailyStep, 5, 120);
-    state.adjustmentCurve = planner.adjustmentCurve === 'curved' ? 'curved' : 'linear';
+    if (typeof planner.startSlow === 'boolean' || typeof planner.endSlow === 'boolean') {
+      state.startSlow = !!planner.startSlow;
+      state.endSlow = !!planner.endSlow;
+    } else if (planner.adjustmentCurve === 'curved') {
+      state.startSlow = true;
+      state.endSlow = true;
+    } else {
+      state.startSlow = false;
+      state.endSlow = false;
+    }
     state.timeZone = planner.timeZone || state.timeZone;
     state.timeFormat = planner.timeFormat === '12h' ? '12h' : state.timeFormat;
     const hasEvents = Array.isArray(snapshot.events);
@@ -1983,17 +2047,14 @@
       exportPeriodSelect.value = state.exportPeriod;
       exportPeriodSelect.addEventListener('change', () => {
         const selected = getSelectedExportPeriod();
-        if (selected) state.exportPeriod = selected;
+        if (selected) {
+          state.exportPeriod = selected;
+          persistState();
+        }
       });
     }
-    if (exportAllEventsToggle) {
-      exportAllEventsToggle.checked = !!state.exportAllEvents;
-      exportAllEventsToggle.addEventListener('change', (evt) => {
-        state.exportAllEvents = evt.target.checked;
-        persistState();
-      });
-    }
-    if (exportCalendarBtn) exportCalendarBtn.addEventListener('click', handleExportCalendar);
+    if (exportWakeSleepBtn) exportWakeSleepBtn.addEventListener('click', () => handleExportCalendar(false));
+    if (exportAllEventsBtn) exportAllEventsBtn.addEventListener('click', () => handleExportCalendar(true));
   }
 
   function initAdvancedAccordion() {
@@ -2035,7 +2096,8 @@
     if (targetTimeInput) targetTimeInput.addEventListener('change', (evt) => updateTargetTime(evt.target.value));
     if (targetDateInput) targetDateInput.addEventListener('change', (evt) => updateTargetDate(evt.target.value));
     if (dailyStepRange) dailyStepRange.addEventListener('input', (evt) => updateDailyStep(evt.target.value));
-    if (adjustmentCurveSelect) adjustmentCurveSelect.addEventListener('change', (evt) => updateAdjustmentCurve(evt.target.value));
+    if (startSlowToggle) startSlowToggle.addEventListener('change', (evt) => updateCurveSetting('startSlow', evt.target.checked));
+    if (endSlowToggle) endSlowToggle.addEventListener('change', (evt) => updateCurveSetting('endSlow', evt.target.checked));
     syncPlannerControls();
   }
 
