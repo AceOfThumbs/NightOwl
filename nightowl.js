@@ -519,10 +519,28 @@
     return normalizeDayMinutes(typeof state.yourDayWakeMinutes === 'number' ? state.yourDayWakeMinutes : fallback);
   }
 
+  function getSleepAnchorStart() {
+    const { wake, sleep } = getAnchorEvents();
+    if (sleep) return sleep.startMin;
+    if (wake) return normalizeDayMinutes(wake.startMin - eventTypes.sleep.defaultDuration);
+    return toMinutes('23:00');
+  }
+
   function getYourDaySleepMinutes() {
-    const sleepWindow = getSleepWindow();
-    if (!sleepWindow) return null;
-    return mapStandardToRealMinutes(sleepWindow.start);
+    const sleepStart = getSleepAnchorStart();
+    const standardWake = getStandardWakeMinutes();
+    const wakeStart = getYourDayWakeMinutes();
+    return normalizeDayMinutes(sleepStart - standardWake + wakeStart);
+  }
+
+  function getSleepDuration() {
+    const sleepStart = getYourDaySleepMinutes();
+    const wakeStart = getYourDayWakeMinutes();
+    if (typeof sleepStart !== 'number' || typeof wakeStart !== 'number') {
+      return eventTypes.sleep.defaultDuration;
+    }
+    const duration = Math.abs(sleepStart - wakeStart);
+    return duration || eventTypes.sleep.defaultDuration;
   }
 
   function feelsLikeMinutes(nowMinutes) {
@@ -539,8 +557,7 @@
 
   function getSleepWindow() {
     const { wake, sleep } = getAnchorEvents();
-    const fallbackDuration = eventTypes.sleep.defaultDuration;
-    const duration = sleep ? minutesDiff(sleep.startMin, sleep.endMin) : fallbackDuration;
+    const duration = getSleepDuration();
     const start = sleep ? sleep.startMin : wake ? (wake.startMin - duration + MINUTES_IN_DAY) % MINUTES_IN_DAY : toMinutes('23:00');
     const end = wake ? wake.startMin : (start + duration) % MINUTES_IN_DAY;
     return { start, end, duration };
@@ -1644,8 +1661,8 @@
   }
 
   function getSleepDurationFromClock() {
-    const sleepWindow = getSleepWindow();
-    return typeof sleepWindow?.duration === 'number' ? sleepWindow.duration : eventTypes.sleep.defaultDuration;
+    const duration = getSleepDuration();
+    return typeof duration === 'number' ? duration : eventTypes.sleep.defaultDuration;
   }
 
   function getExportDuration(evt) {
