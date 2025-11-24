@@ -7,6 +7,7 @@
   const SNAP_DEFAULT = 5;
   const SNAP_ALT = 1;
   const SNAP_SHIFT = 15;
+  const MIN_EXPORT_DURATION = 1;
   const TEXT_SCALE_STEP = 0.1;
   const SHARE_PARAM = 'planner';
   const SAVED_PLANNER_KEY = 'nightowl.savedPlanner.v1';
@@ -1642,6 +1643,16 @@
     }, null);
   }
 
+  function getSleepDurationFromClock() {
+    const sleepWindow = getSleepWindow();
+    return typeof sleepWindow?.duration === 'number' ? sleepWindow.duration : eventTypes.sleep.defaultDuration;
+  }
+
+  function getExportDuration(evt) {
+    if (evt.type === 'sleep') return getSleepDurationFromClock();
+    return MIN_EXPORT_DURATION;
+  }
+
   function buildExportEventsForDate(date) {
     const planEntry = getPlanEntryForDate(date);
     const wakeMinutes = typeof planEntry?.wake === 'number' ? planEntry.wake : getYourDayWakeMinutes();
@@ -1679,7 +1690,7 @@
       const { events: dayEvents, dayLabel, shift } = buildExportEventsForDate(dayDate);
       const shiftText = formatShiftMinutes(shift || 0);
       dayEvents.forEach((evt, idx) => {
-        const duration = typeof evt.duration === 'number' ? evt.duration : minutesDiff(evt.startMin, evt.endMin);
+        const duration = getExportDuration(evt);
         const startLocal = new Date(dayDate);
         startLocal.setMinutes(evt.startMin);
         const startUtc = zonedTimeToUtc(startLocal, timeZone);
