@@ -72,36 +72,18 @@
   function computeDayEvents(wakeMin,sleepDurationMin){
     return {wake:modDay(wakeMin),lunch:modDay(wakeMin+5*60),dinner:modDay(wakeMin+11*60),sleep:modDay(wakeMin-sleepDurationMin)};
   }
-  function computePlanSchedule({wakeM,sleepM,plannerMode,targetTimeM,dailyStep,direction,nDays,fromDate,startSlow,endSlow}){
+  function computePlanSchedule({wakeM,sleepM,plannerMode,targetTimeM,dailyStep,direction,nDays,fromDate}){
     const startTime=plannerMode==='wake'?wakeM:sleepM;
     const target=modDay(targetTimeM);
     let delta=((target-startTime)%MINUTES_IN_DAY+MINUTES_IN_DAY)%MINUTES_IN_DAY;if(delta>720)delta-=MINUTES_IN_DAY;
     if(direction==='earlier'&&delta>0)delta-=MINUTES_IN_DAY; if(direction==='later'&&delta<0)delta+=MINUTES_IN_DAY;
     const step=Math.min(240,Math.max(5,dailyStep));
     const days=Math.max(1,Math.floor(nDays));
-    const easeIn=t=>t*t;
-    const easeOut=t=>1-(1-t)*(1-t);
-    const easeInOut=t=>t<0.5?2*t*t:1-Math.pow(-2*t+2,2)/2;
-    const curveValue=(t)=>{
-      if(startSlow&&endSlow) return easeInOut(t);
-      if(startSlow) return easeIn(t);
-      if(endSlow) return easeOut(t);
-      return t;
-    };
-    const perDayWeights=[];
-    for(let i=1;i<=days;i++){
-      const prev=curveValue((i-1)/days);
-      const next=curveValue(i/days);
-      perDayWeights.push(Math.max(0,next-prev));
-    }
-    const weightSum=perDayWeights.reduce((sum,v)=>sum+v,0)||1;
+    const perDay=Math.max(-step,Math.min(step,Math.round(delta/days)));
     const rows=[]; let t=startTime;
     for(let i=1;i<=days;i++){
       const d=new Date(fromDate.getFullYear(),fromDate.getMonth(),fromDate.getDate()+i);
-      const weight=perDayWeights[i-1]/weightSum;
-      const change=clamp(delta*weight,-step,step);
-      t=modDay(t+change);
-      rows.push({day:i,date:d.toDateString(),time:t});
+      t=modDay(t+perDay); rows.push({day:i,date:d.toDateString(),time:t});
     }
     if(rows.length>0) rows[rows.length-1].time=target;
     return rows;
@@ -117,14 +99,10 @@
     targetTime:'07:00',
     targetDate:todayAsYYYYMMDD(),
     dailyStep:30,
-    startSlow:false,
-    endSlow:false,
     direction:'auto',
     startDate:todayAsYYYYMMDD(),
     textScale:1,
     theme:'dark',
-    activeDayTab:'your',
-    exportPeriod:'full',
     day:{
       scheduleId:DEFAULT_SCHEDULE_ID,
       dirty:false,
@@ -150,11 +128,8 @@
   const targetTime=$('targetTime');
   const dailyStep=$('dailyStep');
   const dailyStepLabel=$('dailyStepLabel');
-  const startSlow=$('startSlow');
-  const endSlow=$('endSlow');
   const planBody=$('planBody');
   const dirButtons=Array.from(document.querySelectorAll('[data-dir]'));
-  const dayTabButtons=Array.from(document.querySelectorAll('[data-day-tab]'));
   const yourDayList=$('yourDayList');
   const addDayItem=$('addDayItem');
   const yourDayName=$('yourDayName');
@@ -162,8 +137,6 @@
   const yourDayRemove=$('yourDayRemove');
   const yourDaySave=$('yourDaySave');
   const yourDayReset=$('yourDayReset');
-  const yourDaySubhead=$('yourDaySubhead');
-  const yourDayPanel=document.querySelector('.yourday-panel');
   const textScaleDown=$('textScaleDown');
   const textScaleUp=$('textScaleUp');
   const themeButtons=Array.from(document.querySelectorAll('[data-theme-choice]'));
@@ -178,9 +151,6 @@
   const shareCodeEl=$('shareCode');
   const shareCopyLink=$('shareCopyLink');
   const shareCopyCode=$('shareCopyCode');
-  const exportPeriod=$('exportPeriod');
-  const exportWakeSleep=$('exportWakeSleep');
-  const exportAllEvents=$('exportAllEvents');
   const overrideInput=$('overrideInput');
   const applyOverride=$('applyOverride');
   const clearOverride=$('clearOverride');
@@ -376,39 +346,17 @@
       yourDaySelect.value=DEFAULT_SCHEDULE_ID;
     }
   }
-  function renderYourDaySection(wakeM,sleepDuration,standardItems){
+  function renderYourDaySection(wakeM,sleepDuration){
     if(!yourDayList) return;
     if(state.day.scheduleId===DEFAULT_SCHEDULE_ID&&!state.day.dirty){
       state.day.items=cloneDayItems(getDefaultDayItems(wakeM,sleepDuration));
     }
-    const standardList=standardItems||getDefaultDayItems(wakeM,sleepDuration);
-    const isStandardTab=state.activeDayTab==='standard';
-    const itemsToShow=isStandardTab?standardList:state.day.items;
     yourDayList.innerHTML='';
-    yourDayList.classList.toggle('readonly',isStandardTab);
-    if(yourDayPanel){
-      yourDayPanel.setAttribute('data-view',isStandardTab?'standard':'your');
-    }
-    if(yourDaySubhead){
-      yourDaySubhead.textContent=isStandardTab?
-        'Standard Day mirrors your wake and sleep window.' :
-        'Adjust your day, then save or load a schedule.';
-    }
-    if(!Array.isArray(itemsToShow)||itemsToShow.length===0){
+    if(!Array.isArray(state.day.items)||state.day.items.length===0){
       const empty=document.createElement('div');
       empty.className='yourday-empty';
       empty.textContent='No items yet. Add your first entry.';
       yourDayList.appendChild(empty);
-    }else if(isStandardTab){
-      sortDayItemsInPlace(itemsToShow);
-      itemsToShow.forEach(item=>{
-        const row=document.createElement('div');
-        row.className='yourday-row';
-        row.innerHTML=
-          `<div class="label-inline">${format12h(toMinutes(item.time||'00:00'))}</div>`+
-          `<div class="yourday-row__value">${escapeHtml(item.label||'')}</div>`;
-        yourDayList.appendChild(row);
-      });
     }else{
       sortDayItemsInPlace(state.day.items);
       state.day.items.forEach((item,index)=>{
@@ -427,15 +375,9 @@
       });
     }
     updateScheduleSelect();
-    const disableEdits=isStandardTab;
     if(yourDayRemove){
-      yourDayRemove.disabled=disableEdits||state.day.scheduleId===DEFAULT_SCHEDULE_ID;
+      yourDayRemove.disabled=state.day.scheduleId===DEFAULT_SCHEDULE_ID;
     }
-    if(addDayItem) addDayItem.disabled=disableEdits;
-    if(yourDaySave) yourDaySave.disabled=disableEdits;
-    if(yourDayName) yourDayName.disabled=disableEdits;
-    if(yourDayReset) yourDayReset.disabled=disableEdits;
-    if(yourDaySelect) yourDaySelect.disabled=disableEdits;
     if(yourDayName&&document.activeElement!==yourDayName){
       if(state.day.scheduleId===DEFAULT_SCHEDULE_ID){
         yourDayName.value='';
@@ -516,19 +458,6 @@
     });
   }
 
-  function updateDayTabs(){
-    if(dayTabButtons.length===0) return;
-    dayTabButtons.forEach(btn=>{
-      const value=btn.getAttribute('data-day-tab');
-      const isActive=value===state.activeDayTab;
-      btn.setAttribute('aria-selected',isActive?'true':'false');
-      btn.classList.toggle('tab--active',isActive);
-    });
-    if(yourDayPanel){
-      yourDayPanel.setAttribute('data-view',state.activeDayTab);
-    }
-  }
-
   let wakeReminderMessage=null;
   function queueWakeReminder(wakeValue){
     const wake24=minutesToTimeString(toMinutes(wakeValue));
@@ -553,7 +482,6 @@
       plannerMode:state.plannerMode,
       direction:state.direction,
       dailyStep:state.dailyStep,
-      curve:{startSlow:state.startSlow,endSlow:state.endSlow},
       target:{time:state.targetTime,zone:state.timeZone},
       targetDate:state.targetDate
     },
@@ -569,8 +497,6 @@
       ['mode',data.planner?.plannerMode||'wake'],
       ['dir',data.planner?.direction||'auto'],
       ['step',clamp(Number(data.planner?.dailyStep??30),5,240)],
-      ['cs',data.planner?.curve?.startSlow?1:0],
-      ['ce',data.planner?.curve?.endSlow?1:0],
       ['tz',data.planner?.target?.zone||'local'],
       ['target',normalizeTimeString(data.planner?.target?.time||'07:00','07:00')],
       ['date',data.planner?.targetDate||todayAsYYYYMMDD()],
@@ -599,8 +525,6 @@
     const wakeDuration=clamp(Number.parseInt(map.dur,10)||state.wakeDuration||15*60,720,1200);
     const plannerMode=map.mode==='sleep'?'sleep':'wake';
     const direction=map.dir||'auto';
-    const startSlow=map.cs==='1'||map.cs==='true';
-    const endSlow=map.ce==='1'||map.ce==='true';
     const targetZone=map.tz||'local';
     const targetTime=normalizeTimeString(map.target||'07:00','07:00');
     const targetDate=map.date||todayAsYYYYMMDD();
@@ -614,7 +538,6 @@
           plannerMode,
           direction,
           dailyStep,
-          curve:{startSlow,endSlow},
           target:{time:targetTime,zone:targetZone},
           targetDate
         },
@@ -638,8 +561,6 @@
     state.plannerMode=data.planner?.plannerMode||'wake';
     state.direction=data.planner?.direction||'auto';
     state.dailyStep=data.planner?.dailyStep??30;
-    state.startSlow=Boolean(data.planner?.curve?.startSlow);
-    state.endSlow=Boolean(data.planner?.curve?.endSlow);
     state.timeZone=data.planner?.target?.zone||'local';
     state.targetTime=data.planner?.target?.time||'07:00';
     state.targetDate=data.planner?.targetDate||todayAsYYYYMMDD();
@@ -655,7 +576,6 @@
           plannerMode:state.plannerMode,
           direction:state.direction,
           dailyStep:state.dailyStep,
-          curve:{startSlow:state.startSlow,endSlow:state.endSlow},
           target:{time:state.targetTime,zone:state.timeZone},
           targetDate:state.targetDate
         },
@@ -676,8 +596,6 @@
       state.plannerMode=data.planner?.plannerMode||'wake';
       state.direction=data.planner?.direction||'auto';
       state.dailyStep=data.planner?.dailyStep??30;
-      state.startSlow=Boolean(data.planner?.curve?.startSlow);
-      state.endSlow=Boolean(data.planner?.curve?.endSlow);
       state.timeZone=data.planner?.target?.zone||'local';
       state.targetTime=data.planner?.target?.time||'07:00';
       state.targetDate=data.planner?.targetDate||todayAsYYYYMMDD();
@@ -688,7 +606,7 @@
       const today=todayAsYYYYMMDD();
       if (new Date(state.startDate) < new Date(today)) {
         const result=rollForwardToToday({
-          planner:{plannerMode:state.plannerMode,direction:state.direction,dailyStep:state.dailyStep,curve:{startSlow:state.startSlow,endSlow:state.endSlow},target:{time:state.targetTime,zone:state.timeZone},targetDate:state.targetDate},
+          planner:{plannerMode:state.plannerMode,direction:state.direction,dailyStep:state.dailyStep,target:{time:state.targetTime,zone:state.timeZone},targetDate:state.targetDate},
           model:{wake:state.wake,wakeDuration:state.wakeDuration},
           calendar:{startDate:state.startDate}
         });
@@ -748,9 +666,7 @@
         dailyStep:data.planner?.dailyStep??state.dailyStep,
         direction:data.planner?.direction||state.direction,
         nDays:Math.max(1,Math.floor((new Date(data.planner?.targetDate||todayAsYYYYMMDD())-new Date(sd))/(24*60*60*1000))),
-        fromDate:new Date(sd),
-        startSlow:Boolean(data.planner?.curve?.startSlow),
-        endSlow:Boolean(data.planner?.curve?.endSlow)
+        fromDate:new Date(sd)
       });
       let todaysMinutes;
       if(daysSince<=0) todaysMinutes=wm; else if(daysSince>=rows.length) todaysMinutes=localTargetM; else todaysMinutes=rows[daysSince]?.time||localTargetM;
@@ -780,9 +696,6 @@
     timeZone.value=state.timeZone;
     targetTime.value=state.targetTime;
     dailyStep.value=String(state.dailyStep); dailyStepLabel.textContent=String(state.dailyStep);
-    if(startSlow) startSlow.checked=!!state.startSlow;
-    if(endSlow) endSlow.checked=!!state.endSlow;
-    if(exportPeriod) exportPeriod.value=state.exportPeriod||'full';
 
     // derived
     const wakeM=toMinutes(state.wake);
@@ -795,8 +708,7 @@
     sleepHours.textContent=String(hours);
     sleepHours2.textContent=String(hours);
 
-    const standardItems=getDefaultDayItems(wakeM,sleepDuration);
-    renderYourDaySection(wakeM,sleepDuration,standardItems);
+    renderYourDaySection(wakeM,sleepDuration);
 
 
     // feels-like clock
@@ -806,15 +718,12 @@
     if(feelsLike) feelsLike.textContent=state.show12h?format12h(bioMinutes):`${pad(Math.floor(bioMinutes/60))}:${pad(bioMinutes%60)}`;
     if(clockDate) clockDate.textContent=now.toLocaleDateString(undefined,{weekday:'short',month:'short',day:'numeric'});
     if(toggleFormat) toggleFormat.textContent=state.show12h?'12-hour':'24-hour';
-    const activeItems=state.activeDayTab==='standard'?standardItems:state.day.items;
-    const activeType=state.activeDayTab==='standard'?'standard':'your';
-    const scheduleSegments=mergeScheduleSegments(buildScheduleSegments(activeItems||[], activeType),[]);
-    if(analogClock) drawClock(analogClock,bioMinutes,scheduleSegments);
+    if(analogClock) drawClock(analogClock,bioMinutes);
 
     // plan
     const targetLocal=convertMinutesBetweenTZ(state.timeZone,'local',state.targetDate,toMinutes(state.targetTime));
     const nDays=(()=>{const p=state.targetDate.split('-').map(Number); if(p.length!==3||p.some(isNaN)) return 1; const end=new Date(p[0],p[1]-1,p[2]); const today=getNow(); const startOf=d=>new Date(d.getFullYear(),d.getMonth(),d.getDate()).getTime(); const diff=Math.round((startOf(end)-startOf(today))/(24*60*60*1000)); return Math.max(1,diff);})();
-    const rows=computePlanSchedule({wakeM,sleepM,plannerMode:state.plannerMode,targetTimeM:targetLocal,dailyStep:state.dailyStep,direction:state.direction,nDays,fromDate:getNow(),startSlow:state.startSlow,endSlow:state.endSlow});
+    const rows=computePlanSchedule({wakeM,sleepM,plannerMode:state.plannerMode,targetTimeM:targetLocal,dailyStep:state.dailyStep,direction:state.direction,nDays,fromDate:getNow()});
     if(planBody){
       planBody.innerHTML='';
       rows.forEach(row=>{
@@ -828,7 +737,6 @@
     }
 
     updateDirectionButtons();
-    updateDayTabs();
   }
 
   function adjustTextScale(delta){
@@ -842,7 +750,7 @@
     savePreferences();
   }
 
-  function drawClock(svgEl,minutes,mergedSegments){
+  function drawClock(svgEl,minutes){
     const cx=100,cy=100,r=84; const color=bioColor(minutes);
     const hAng=((minutes%720)/720)*360-90; const mAng=((minutes%60)/60)*360-90;
     svgEl.innerHTML='';
@@ -854,9 +762,6 @@
       const a=(i*30-90)*Math.PI/180; const x1=cx+Math.cos(a)*r*0.88, y1=cy+Math.sin(a)*r*0.88; const x2=cx+Math.cos(a)*r, y2=cy+Math.sin(a)*r;
       const line=document.createElementNS('http://www.w3.org/2000/svg','line');
       line.setAttribute('x1',x1);line.setAttribute('y1',y1);line.setAttribute('x2',x2);line.setAttribute('y2',y2);line.setAttribute('stroke','#CFE2FF');line.setAttribute('stroke-width',i%3===0?'3':'1');line.setAttribute('stroke-opacity','0.55'); svgEl.appendChild(line);
-    }
-    if(Array.isArray(mergedSegments)&&mergedSegments.length){
-      drawScheduleSegments(svgEl,mergedSegments);
     }
     const toXY=(ang,len)=>{const rad=ang*Math.PI/180;return {x:cx+Math.cos(rad)*len,y:cy+Math.sin(rad)*len}};
     const h=toXY(hAng,r*0.6), m=toXY(mAng,r*0.82);
@@ -877,97 +782,6 @@
   function hexToRgb(hex){const h=hex.replace('#','');const n=parseInt(h,16);const r=(h.length===3?((n>>8)&0xf)*17:(n>>16)&0xff);const g=(h.length===3?((n>>4)&0xf)*17:(n>>8)&0xff);const b=(h.length===3?((n    )&0xf)*17:(n     )&0xff);return {r,g,b};}
   function rgbToHex(r,g,b){const f=(x)=>x.toString(16).padStart(2,'0');return `#${f(Math.round(r))}${f(Math.round(g))}${f(Math.round(b))}`}
   function lerp(a,b,t){const A=hexToRgb(a),B=hexToRgb(b);const u=Math.max(0,Math.min(1,t));return rgbToHex(A.r+(B.r-A.r)*u,A.g+(B.g-A.g)*u,A.b+(B.b-A.b)*u)}
-  const EVENT_COLORS=['#6EE7B7','#8EC5FF','#F9A8D4','#FCD34D','#F97316','#A5B4FC','#7DD3FC'];
-  const labelColorCache=new Map();
-  function hashString(str){let h=0;for(let i=0;i<str.length;i++){h=((h<<5)-h)+str.charCodeAt(i);h|=0;}return h;}
-  function colorForSchedule(label,type){
-    const key=`${type||'your'}:${(label||'event').toLowerCase().trim()}`;
-    if(labelColorCache.has(key)) return labelColorCache.get(key);
-    const base=EVENT_COLORS[Math.abs(hashString(key))%EVENT_COLORS.length];
-    const color=type==='standard'?lerp(base,'#cbd5ff',0.35):base;
-    labelColorCache.set(key,color);
-    return color;
-  }
-  function normalizeSegments(segments){
-    const out=[];
-    segments.forEach(seg=>{
-      let start=modDay(seg.start);
-      let end=seg.end;
-      if(end<=start) end+=MINUTES_IN_DAY;
-      const firstEnd=Math.min(end,MINUTES_IN_DAY);
-      out.push({...seg,start,end:firstEnd});
-      if(end>MINUTES_IN_DAY){
-        out.push({...seg,start:0,end:end-MINUTES_IN_DAY});
-      }
-    });
-    return out.filter(seg=>seg.end>seg.start);
-  }
-  function buildScheduleSegments(items,type){
-    if(!Array.isArray(items)||items.length===0) return [];
-    const durationDefault=90;
-    const segments=items.map(item=>{
-      const start=toMinutes(item?.time||'00:00');
-      const duration=clamp(Number(item?.duration)||durationDefault,15,240);
-      return {start,end:start+duration,label:item?.label||'Item',color:colorForSchedule(item?.label,type),type};
-    });
-    return normalizeSegments(segments);
-  }
-  function mergeScheduleSegments(primary,secondary){
-    const all=[...(primary||[]),...(secondary||[])];
-    if(all.length===0) return [];
-    const points=new Set();
-    all.forEach(seg=>{points.add(seg.start);points.add(seg.end);});
-    const sorted=Array.from(points).sort((a,b)=>a-b);
-    const merged=[];
-    for(let i=0;i<sorted.length-1;i++){
-      const start=sorted[i];
-      const end=sorted[i+1];
-      const covering=all.filter(seg=>seg.start<=start&&seg.end>=end);
-      if(covering.length===0) continue;
-      const colors=[];
-      covering.forEach(seg=>{if(!colors.includes(seg.color)) colors.push(seg.color);});
-      merged.push({start,end,colors:colors.slice(0,2)});
-    }
-    return merged;
-  }
-  function describeArc(cx,cy,r,startAng,endAng){
-    const toXY=(ang)=>{const rad=ang*Math.PI/180;return {x:cx+Math.cos(rad)*r,y:cy+Math.sin(rad)*r}};
-    const start=toXY(startAng), end=toXY(endAng);
-    const largeArc=endAng-startAng<=180?0:1;
-    return `M ${start.x} ${start.y} A ${r} ${r} 0 ${largeArc} 1 ${end.x} ${end.y}`;
-  }
-  function drawScheduleSegments(svgEl,segments){
-    if(!Array.isArray(segments)||segments.length===0) return;
-    const cx=100,cy=100,r=78;
-    segments.forEach(seg=>{
-      const startAng=(seg.start/MINUTES_IN_DAY)*360-90;
-      const endAng=(seg.end/MINUTES_IN_DAY)*360-90;
-      const pathBase=describeArc(cx,cy,r,startAng,endAng);
-      if(seg.colors.length<=1){
-        const color=seg.colors[0]||'#8EC5FF';
-        const path=document.createElementNS('http://www.w3.org/2000/svg','path');
-        path.setAttribute('d',pathBase);
-        path.setAttribute('fill','none');
-        path.setAttribute('stroke',color);
-        path.setAttribute('stroke-width','8');
-        path.setAttribute('stroke-linecap','round');
-        path.setAttribute('stroke-opacity','0.75');
-        svgEl.appendChild(path);
-      } else {
-        const radii=[r-2,r+2];
-        seg.colors.slice(0,2).forEach((color,idx)=>{
-          const path=document.createElementNS('http://www.w3.org/2000/svg','path');
-          path.setAttribute('d',describeArc(cx,cy,radii[idx],startAng,endAng));
-          path.setAttribute('fill','none');
-          path.setAttribute('stroke',color);
-          path.setAttribute('stroke-width','6');
-          path.setAttribute('stroke-linecap','round');
-          path.setAttribute('stroke-opacity','0.9');
-          svgEl.appendChild(path);
-        });
-      }
-    });
-  }
 
   // ---------- events ----------
   if(textScaleDown) textScaleDown.addEventListener('click',()=>adjustTextScale(-TEXT_SCALE_STEP));
@@ -978,15 +792,6 @@
       const value=btn.getAttribute('data-theme-choice');
       if(!value) return;
       setThemePreference(value);
-      render();
-    });
-  });
-  dayTabButtons.forEach(btn=>{
-    btn.setAttribute('type','button');
-    btn.addEventListener('click',()=>{
-      const value=btn.getAttribute('data-day-tab');
-      if(!value) return;
-      state.activeDayTab=value==='standard'?'standard':'your';
       render();
     });
   });
@@ -1102,15 +907,6 @@
   if(timeZone) timeZone.addEventListener('change',e=>{state.timeZone=e.target.value;state.startDate=todayAsYYYYMMDD();render()});
   if(targetTime) targetTime.addEventListener('input',e=>{state.targetTime=e.target.value;state.startDate=todayAsYYYYMMDD();render()});
   if(dailyStep) dailyStep.addEventListener('input',e=>{state.dailyStep=clamp(Number(e.target.value),5,240);dailyStepLabel.textContent=String(state.dailyStep);state.startDate=todayAsYYYYMMDD();render()});
-  if(startSlow) startSlow.addEventListener('change',()=>{state.startSlow=!!startSlow.checked;state.startDate=todayAsYYYYMMDD();render()});
-  if(endSlow) endSlow.addEventListener('change',()=>{state.endSlow=!!endSlow.checked;state.startDate=todayAsYYYYMMDD();render()});
-  if(exportPeriod) exportPeriod.addEventListener('change',()=>{state.exportPeriod=exportPeriod.value||'full';});
-  const notifyExport=(type)=>{
-    const periodLabel=exportPeriod?.selectedOptions?.[0]?.textContent?.trim()||'Full schedule';
-    showToast(`${type} export (${periodLabel}) ready to send to your calendar.`, 'success');
-  };
-  if(exportWakeSleep) exportWakeSleep.addEventListener('click',()=>notifyExport('Wake/Sleep'));
-  if(exportAllEvents) exportAllEvents.addEventListener('click',()=>notifyExport('All events'));
   dirButtons.forEach(btn=>{
     btn.setAttribute('aria-pressed','false');
     btn.setAttribute('type','button');

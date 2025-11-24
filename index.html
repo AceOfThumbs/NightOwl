@@ -60,6 +60,7 @@
         <!-- LEFT: Clock + Wake & Sleep + Your Day -->
         <section class="col col-2">
           <div class="card">
+            <div class="card-head"><h2>Clock</h2></div>
             <div class="clock-grid">
               <div class="clock-box">
                 <svg id="analogClock" viewBox="0 0 200 200" class="clock-svg" aria-label="analog clock"></svg>
@@ -95,15 +96,9 @@
           </div>
 
           <div class="card">
-            <div class="card-head card-head--tabs">
-              <h2>Your Day</h2>
-              <div class="tablist" role="tablist" aria-label="Schedule view">
-                <button class="tab" type="button" role="tab" data-day-tab="your" aria-selected="true">Your Day</button>
-                <button class="tab" type="button" role="tab" data-day-tab="standard" aria-selected="false">Standard Day</button>
-              </div>
-            </div>
-            <div class="yourday-panel" data-view="your">
-              <p id="yourDaySubhead" class="sub">Adjust your day, then save or load a schedule.</p>
+            <div class="card-head"><h2>Your Day</h2></div>
+            <div class="yourday-panel">
+              <p class="sub">Adjust your day, then save or load a schedule.</p>
               <div class="field">
                 <label class="label" for="yourDaySelect">Saved schedules</label>
                 <div class="row wrap">
@@ -113,14 +108,12 @@
                 </div>
               </div>
               <div id="yourDayList" class="yourday-list" aria-live="polite"></div>
-              <div class="row wrap yourday-actions">
-                <button id="addDayItem" class="btn" type="button">Add item</button>
-                <div class="field inline-field">
-                  <label class="label" for="yourDayName">Save current as</label>
-                  <div class="row wrap">
-                    <input id="yourDayName" type="text" placeholder="e.g. Night shift" />
-                    <button id="yourDaySave" class="btn primary" type="button">Save</button>
-                  </div>
+              <button id="addDayItem" class="btn" type="button">Add item</button>
+              <div class="field">
+                <label class="label" for="yourDayName">Save current as</label>
+                <div class="row wrap">
+                  <input id="yourDayName" type="text" placeholder="e.g. Night shift" />
+                  <button id="yourDaySave" class="btn primary" type="button">Save</button>
                 </div>
               </div>
             </div>
@@ -173,20 +166,6 @@
                 <label>Max nudge per day (<span id="dailyStepLabel">30</span> min)</label>
                 <input id="dailyStep" type="range" min="5" max="240" step="5" />
               </div>
-              <div class="field">
-                <label>Adjustment style</label>
-                <div class="checkbox-row">
-                  <label class="checkbox">
-                    <input id="startSlow" type="checkbox" />
-                    <span>Start Slow</span>
-                  </label>
-                  <label class="checkbox">
-                    <input id="endSlow" type="checkbox" />
-                    <span>End Slow</span>
-                  </label>
-                </div>
-                <p class="sub">Use curves at the start or end of the plan.</p>
-              </div>
             </div>
 
             <div class="field">
@@ -224,26 +203,6 @@
             </div>
 
             <p class="sub">Tip: keep morning light bright and evening light calm to help the nudge stick.</p>
-
-            <div class="panel export-panel">
-              <div class="grid2">
-                <div class="field">
-                  <label for="exportPeriod">Export period</label>
-                  <select id="exportPeriod">
-                    <option value="full">Full schedule</option>
-                    <option value="next7">Next 7 days</option>
-                    <option value="next30">Next 30 days</option>
-                  </select>
-                </div>
-                <div class="field">
-                  <label>&nbsp;</label>
-                  <div class="row wrap">
-                    <button id="exportWakeSleep" class="btn" type="button">Wake/Sleep to Calendar</button>
-                    <button id="exportAllEvents" class="btn" type="button">Export All events to Calendar</button>
-                  </div>
-                </div>
-              </div>
-            </div>
           </div>
         </section>
       </main>
