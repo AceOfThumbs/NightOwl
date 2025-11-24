@@ -1715,31 +1715,41 @@
 
   function getExportRange(period) {
     const today = startOfDay(getNow());
-    const range = { start: today, days: 7 };
+    if (period === 'today') {
+      return { start: today, days: 1 };
+    }
+
     if (period === 'tomorrow') {
-      range.start = new Date(today);
-      range.start.setDate(range.start.getDate() + 1);
-      range.days = 1;
-    } else if (period === 'full-schedule') {
-      range.start = today;
+      const start = new Date(today);
+      start.setDate(start.getDate() + 1);
+      return { start, days: 1 };
+    }
+
+    if (period === 'full-schedule') {
       const targetDate = parseLocalDate(state.targetDate);
+      const start = today;
       if (targetDate) {
         const targetDay = startOfDay(targetDate);
         const dayMs = 24 * 60 * 60 * 1000;
-        const diffDays = Math.floor((targetDay - range.start) / dayMs);
-        range.days = Math.max(1, diffDays + 1);
-      } else {
-        range.days = Math.max(state.nudgePlan.length || 0, 14);
+        const diffDays = Math.floor((targetDay - start) / dayMs);
+        return { start, days: Math.max(1, diffDays + 1) };
       }
+
+      return { start, days: Math.max(state.nudgePlan.length || 0, 14) };
     }
-    return range;
+
+    if (period === 'this-week') {
+      return { start: today, days: 7 };
+    }
+
+    return { start: today, days: 7 };
   }
 
   function getSelectedExportPeriod() {
     if (!exportPeriodSelect) return state.exportPeriod;
     const value = exportPeriodSelect.value?.trim().toLowerCase();
     const normalised = value?.replace(/\s+/g, '-');
-    if (['tomorrow', 'this-week', 'full-schedule'].includes(normalised)) {
+    if (['today', 'tomorrow', 'this-week', 'full-schedule'].includes(normalised)) {
       state.exportPeriod = normalised;
       return normalised;
     }
