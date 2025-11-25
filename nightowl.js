@@ -1761,18 +1761,17 @@
     const target = normalizePlanDate(date);
     const entries = state.nudgePlan
       .map((entry) => ({ ...entry, day: normalizePlanDate(entry.date) }))
-      .filter((entry) => entry.day);
+      .filter((entry) => entry.day)
+      .sort((a, b) => a.day - b.day);
     if (!target || !entries.length) return null;
+
     const exact = entries.find((entry) => entry.day.getTime() === target.getTime());
     if (exact) return exact;
-    return entries.reduce((closest, entry) => {
-      if (!closest) return entry;
-      const diff = Math.abs(entry.day - target);
-      const best = Math.abs(closest.day - target);
-      if (diff < best) return entry;
-      if (diff === best && entry.day < closest.day) return entry;
-      return closest;
-    }, null);
+
+    if (target < entries[0].day) return null;
+
+    const pastEntries = entries.filter((entry) => entry.day <= target);
+    return pastEntries[pastEntries.length - 1] || null;
   }
 
   function getSleepDurationFromClock() {
@@ -1785,8 +1784,8 @@
     return MIN_EXPORT_DURATION;
   }
 
-  function buildExportEventsForDate(date, includeAllEvents = state.exportAllEvents) {
-    const planEntry = getPlanEntryForDate(date);
+  function buildExportEventsForDate(date, includeAllEvents = state.exportAllEvents, useYourDayBaseline = false) {
+    const planEntry = useYourDayBaseline ? null : getPlanEntryForDate(date);
     const wakeMinutes = typeof planEntry?.wake === 'number' ? planEntry.wake : getYourDayWakeMinutes();
     const delta = signedDelta(getStandardWakeMinutes(), wakeMinutes);
     const shiftedEvents = state.events.map((evt) => ({ ...shiftEvent(evt, delta), baseStart: evt.startMin }));
@@ -1809,7 +1808,8 @@
     return { events: filteredEvents, planEntry, dayLabel, shift };
   }
 
-  function buildICSContent(startDate, days, timeZone, includeAllEvents = state.exportAllEvents) {
+  function buildICSContent(startDate, days, timeZone, includeAllEvents = state.exportAllEvents, options = {}) {
+    const { forceYourDayForStart = false } = options;
     const tzid = timeZone === 'local' ? Intl.DateTimeFormat().resolvedOptions().timeZone || 'local' : timeZone;
     const dtstamp = formatICSDateTime(new Date());
     const lines = [
@@ -1825,7 +1825,11 @@
     for (let day = 0; day < days; day++) {
       const dayDate = new Date(base);
       dayDate.setDate(base.getDate() + day);
-      const { events: dayEvents, dayLabel, shift } = buildExportEventsForDate(dayDate, includeAllEvents);
+      const { events: dayEvents, dayLabel, shift } = buildExportEventsForDate(
+        dayDate,
+        includeAllEvents,
+        forceYourDayForStart && day === 0
+      );
       const shiftText = formatShiftMinutes(shift || 0);
       dayEvents.forEach((evt, idx) => {
         const duration = getExportDuration(evt);
@@ -1905,7 +1909,8 @@
     const period = getSelectedExportPeriod();
     if (!period) return;
     const { start, days } = getExportRange(period);
-    const ics = buildICSContent(start, days, state.plannerTimeZone, includeAllEvents);
+    const forceYourDayForStart = period === 'today';
+    const ics = buildICSContent(start, days, state.plannerTimeZone, includeAllEvents, { forceYourDayForStart });
     const filename = `nightowl-${period}.ics`;
     downloadICS(ics, filename);
     showToast('Calendar file created. Import into your calendar app.', 'success');
