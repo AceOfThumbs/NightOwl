@@ -140,7 +140,8 @@
     activeFilter: 'all',
     pointerDrag: null,
     openEditorId: null,
-    timeZone: 'local',
+    displayTimeZone: 'local',
+    plannerTimeZone: 'local',
     plannerMode: 'wake',
     plannerDirection: 'auto',
     targetTime: '07:30',
@@ -169,8 +170,8 @@
 
   const formatterCache = new Map();
 
-  function todayISO() {
-    const now = getNow();
+  function todayISO(timeZone = state.plannerTimeZone) {
+    const now = getNowInZone(timeZone);
     return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
   }
 
@@ -178,6 +179,12 @@
     const d = new Date(date);
     d.setHours(0, 0, 0, 0);
     return d;
+  }
+
+  function startOfDayInZone(date, timeZone = state.plannerTimeZone) {
+    const base = !timeZone || timeZone === 'local' ? new Date(date) : new Date(date.toLocaleString('en-US', { timeZone }));
+    base.setHours(0, 0, 0, 0);
+    return base;
   }
 
   function parseLocalDate(value) {
@@ -189,6 +196,12 @@
 
   function getNow() {
     return state.overrideNow ? new Date(state.overrideNow) : new Date();
+  }
+
+  function getNowInZone(timeZone = state.displayTimeZone) {
+    const now = getNow();
+    if (!timeZone || timeZone === 'local') return now;
+    return new Date(now.toLocaleString('en-US', { timeZone }));
   }
 
   function normalizeDayMinutes(value) {
@@ -276,7 +289,8 @@
       if (prefs) {
         state.textScale = Number.isFinite(prefs.textScale) ? prefs.textScale : state.textScale;
         state.theme = prefs.theme === 'light' ? 'light' : 'dark';
-        state.timeZone = prefs.timeZone || state.timeZone;
+        state.displayTimeZone = prefs.displayTimeZone || prefs.timeZone || state.displayTimeZone;
+        state.plannerTimeZone = prefs.plannerTimeZone || prefs.timeZone || state.plannerTimeZone;
         state.targetTime = prefs.targetTime || state.targetTime;
         state.dailyStep = clamp(Number(prefs.dailyStep) || state.dailyStep, 5, 120);
         state.plannerMode = prefs.plannerMode || state.plannerMode;
@@ -333,7 +347,8 @@
       JSON.stringify({
         textScale: state.textScale,
         theme: state.theme,
-        timeZone: state.timeZone,
+        displayTimeZone: state.displayTimeZone,
+        plannerTimeZone: state.plannerTimeZone,
         targetTime: state.targetTime,
         dailyStep: state.dailyStep,
         plannerMode: state.plannerMode,
@@ -477,16 +492,22 @@
     persistState();
   }
 
-  function setTimezone(tz) {
-    state.timeZone = timezoneLocations[tz] ? tz : 'local';
-    if (timeZoneSelect) timeZoneSelect.value = state.timeZone;
+  function setDisplayTimezone(tz) {
+    state.displayTimeZone = timezoneLocations[tz] ? tz : 'local';
     updateTimezoneToggle();
     persistState();
     render();
   }
 
+  function setPlannerTimezone(tz) {
+    state.plannerTimeZone = timezoneLocations[tz] ? tz : 'local';
+    if (timeZoneSelect) timeZoneSelect.value = state.plannerTimeZone;
+    persistState();
+    renderNudgePlan();
+  }
+
   function updateTimezoneToggle() {
-    const tzLabel = timezoneLocations[state.timeZone]?.label || 'Local';
+    const tzLabel = timezoneLocations[state.displayTimeZone]?.label || 'Local';
     timezoneToggle.textContent = tzLabel;
   }
 
@@ -555,7 +576,10 @@
     if (typeof sleepStart !== 'number' || typeof wakeStart !== 'number') {
       return eventTypes.sleep.defaultDuration;
     }
-    const duration = Math.abs(sleepStart - wakeStart);
+    let duration = Math.abs(sleepStart - wakeStart);
+    if (duration > MINUTES_IN_DAY / 2) {
+      duration = MINUTES_IN_DAY - duration;
+    }
     return duration || eventTypes.sleep.defaultDuration;
   }
 
@@ -602,7 +626,7 @@
   }
 
   function drawDaylight(ring, center, radius) {
-    const { sunrise, sunset } = calculateSunTimes(state.timeZone);
+    const { sunrise, sunset } = calculateSunTimes(state.displayTimeZone);
     if (sunrise === null || sunset === null || !ring) return;
     const start = angleFromMinutes(sunrise);
     const end = angleFromMinutes(sunset);
@@ -665,8 +689,8 @@
     drawSleepWindowArc(dayRing, center, radius, getSleepWindow());
     drawHourTicks(dayRing, center, radius);
 
-    const now = getNow();
-    const nowMinutes = minutesInZone(now, state.timeZone);
+    const now = getNowInZone(state.displayTimeZone);
+    const nowMinutes = minutesInZone(now, state.displayTimeZone);
     const feelsMinutes = feelsLikeMinutes(nowMinutes);
     const feelsLikeHand = createSVG('line', {
       x1: center,
@@ -698,6 +722,14 @@
     return state.events.map((evt) => ({ ...shiftEvent(evt, delta), baseStart: evt.startMin }));
   }
 
+  function compareYourDayEvents(a, b) {
+    const wake = getYourDayWakeMinutes();
+    const relA = normalizeDayMinutes(a.startMin - wake);
+    const relB = normalizeDayMinutes(b.startMin - wake);
+    if (relA !== relB) return relA - relB;
+    return compareEvents(a, b);
+  }
+
   function renderYourDayClock() {
     const frame = prepareClock(yourDayRing);
     if (!frame) return;
@@ -713,8 +745,8 @@
     }
     drawHourTicks(yourDayRing, center, radius);
 
-    const now = getNow();
-    const nowMinutes = minutesInZone(now, state.timeZone);
+    const now = getNowInZone(state.displayTimeZone);
+    const nowMinutes = minutesInZone(now, state.displayTimeZone);
     const feelsMinutes = feelsLikeMinutes(nowMinutes);
     const feelsLikeHand = createSVG('line', {
       x1: center,
@@ -1245,7 +1277,7 @@
 
   function renderNextEventLabelFor(events, labelEl, ringEl) {
     if (!labelEl || !ringEl) return;
-    const nowMinutes = minutesInZone(getNow(), state.timeZone);
+    const nowMinutes = minutesInZone(getNowInZone(state.displayTimeZone), state.displayTimeZone);
     const upcoming = events
       .map((evt) => ({ ...evt, minutesUntil: ((evt.startMin - nowMinutes + MINUTES_IN_DAY) % MINUTES_IN_DAY) }))
       .sort((a, b) => a.minutesUntil - b.minutesUntil)[0];
@@ -1305,7 +1337,7 @@
 
     const events = getYourDayEvents()
       .slice()
-      .sort((a, b) => a.startMin - b.startMin);
+      .sort((a, b) => compareYourDayEvents(a, b));
     const hasWake = state.events.some((evt) => evt.type === 'wake');
     const wakeHint = hasWake ? '' : ' (using default wake)';
 
@@ -1346,7 +1378,7 @@
 
   function calculateSunTimes(timeZone) {
     const loc = timezoneLocations[timeZone] || timezoneLocations.local;
-    const now = getNow();
+    const now = getNowInZone(timeZone);
     const date = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const sun = solarSunriseSunset(date, loc.lat, loc.lon);
     if (!sun) return { sunrise: null, sunset: null };
@@ -1388,8 +1420,8 @@
     if (Jset < Jrise) Jset += 1;
     const sunriseDate = fromJulian(Jrise);
     const sunsetDate = fromJulian(Jset);
-    const sunrise = minutesInZone(sunriseDate, state.timeZone);
-    const sunset = minutesInZone(sunsetDate, state.timeZone);
+    const sunrise = minutesInZone(sunriseDate, state.displayTimeZone);
+    const sunset = minutesInZone(sunsetDate, state.displayTimeZone);
     if (Number.isNaN(sunrise) || Number.isNaN(sunset)) return null;
     return { sunrise, sunset };
   }
@@ -1450,8 +1482,8 @@
     if (state.plannerDirection === 'later' && diff < 0) diff += MINUTES_IN_DAY;
 
     const step = clamp(Number(state.dailyStep) || 30, 5, 120);
-    const today = startOfDay(getNow());
-    const targetDate = parseLocalDate(state.targetDate) || today;
+    const today = startOfDayInZone(getNow(), state.plannerTimeZone);
+    const targetDate = startOfDayInZone(parseLocalDate(state.targetDate) || today, state.plannerTimeZone);
     const direction = targetDate >= today ? 1 : -1;
     const dayMs = 24 * 60 * 60 * 1000;
     const startDate = new Date(today);
@@ -1497,7 +1529,12 @@
       const wake = normalizeDayMinutes(currentWake + appliedShift);
       const sleep = normalizeDayMinutes(currentSleep + appliedShift);
       dayDate.setHours(0, 0, 0, 0);
-      const label = dayDate.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
+      const label = dayDate.toLocaleDateString(undefined, {
+        weekday: 'short',
+        month: 'short',
+        day: 'numeric',
+        timeZone: state.plannerTimeZone === 'local' ? undefined : state.plannerTimeZone
+      });
       plan.push({ label, wake, sleep, shift, date: dayDate.toISOString() });
     }
 
@@ -1733,7 +1770,13 @@
       ? [...wakeSleepEvents, ...shiftedEvents.filter((evt) => evt.type !== 'wake' && evt.type !== 'sleep')]
       : wakeSleepEvents;
     const dayLabel =
-      planEntry?.label || date.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
+      planEntry?.label ||
+      date.toLocaleDateString(undefined, {
+        weekday: 'short',
+        month: 'short',
+        day: 'numeric',
+        timeZone: state.plannerTimeZone === 'local' ? undefined : state.plannerTimeZone
+      });
     const shift =
       typeof planEntry?.shift === 'number'
         ? planEntry.shift
@@ -1753,7 +1796,7 @@
       `X-WR-TIMEZONE:${tzid}`
     ];
 
-    const base = startOfDay(startDate);
+    const base = startOfDayInZone(startDate, timeZone);
     for (let day = 0; day < days; day++) {
       const dayDate = new Date(base);
       dayDate.setDate(base.getDate() + day);
@@ -1784,7 +1827,7 @@
   }
 
   function getExportRange(period) {
-    const today = startOfDay(getNow());
+    const today = startOfDayInZone(getNow(), state.plannerTimeZone);
     if (period === 'today') {
       return { start: today, days: 1 };
     }
@@ -1799,7 +1842,7 @@
       const targetDate = parseLocalDate(state.targetDate);
       const start = today;
       if (targetDate) {
-        const targetDay = startOfDay(targetDate);
+        const targetDay = startOfDayInZone(targetDate, state.plannerTimeZone);
         const dayMs = 24 * 60 * 60 * 1000;
         const diffDays = Math.floor((targetDay - start) / dayMs);
         return { start, days: Math.max(1, diffDays + 1) };
@@ -1837,7 +1880,7 @@
     const period = getSelectedExportPeriod();
     if (!period) return;
     const { start, days } = getExportRange(period);
-    const ics = buildICSContent(start, days, state.timeZone, includeAllEvents);
+    const ics = buildICSContent(start, days, state.plannerTimeZone, includeAllEvents);
     const filename = `nightowl-${period}.ics`;
     downloadICS(ics, filename);
     showToast('Calendar file created. Import into your calendar app.', 'success');
@@ -1854,7 +1897,7 @@
         dailyStep: state.dailyStep,
         startSlow: state.startSlow,
         endSlow: state.endSlow,
-        timeZone: state.timeZone,
+        timeZone: state.plannerTimeZone,
         timeFormat: state.timeFormat
       },
       events: includeEvents ? state.events.map((evt) => ({ ...evt })) : undefined
@@ -1911,7 +1954,7 @@
       state.startSlow = false;
       state.endSlow = false;
     }
-    state.timeZone = planner.timeZone || state.timeZone;
+    state.plannerTimeZone = planner.timeZone || state.plannerTimeZone;
     state.timeFormat = planner.timeFormat === '12h' ? '12h' : state.timeFormat;
     const hasEvents = Array.isArray(snapshot.events);
     if (hasEvents) {
@@ -1921,7 +1964,7 @@
     state.shareIncludeEvents = hasEvents;
     persistState();
     syncPlannerControls();
-    setTimezone(state.timeZone);
+    setDisplayTimezone(state.displayTimeZone);
     updateTimeFormatToggle();
     render();
   }
@@ -2103,14 +2146,14 @@
 
   function initTimezoneControls() {
     populateTimeZoneSelect();
-    setTimezone(state.timeZone);
-    timeZoneSelect.addEventListener('change', (evt) => setTimezone(evt.target.value));
+    setPlannerTimezone(state.plannerTimeZone);
+    setDisplayTimezone(state.displayTimeZone);
+    timeZoneSelect.addEventListener('change', (evt) => setPlannerTimezone(evt.target.value));
     timezoneToggle.addEventListener('click', () => {
-      timeZoneSelect.focus();
       const options = Array.from(timeZoneSelect.options);
-      const current = options.findIndex((opt) => opt.value === state.timeZone);
+      const current = options.findIndex((opt) => opt.value === state.displayTimeZone);
       const next = (current + 1) % options.length;
-      setTimezone(options[next].value);
+      setDisplayTimezone(options[next].value);
     });
   }
 
