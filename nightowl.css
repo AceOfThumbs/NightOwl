@@ -145,6 +145,31 @@ textarea {
   outline: none;
 }
 
+.pill-select {
+  appearance: none;
+  background: transparent;
+  color: var(--text-2);
+  font: inherit;
+  border: none;
+  padding-right: var(--space-6);
+  cursor: pointer;
+}
+
+.pill-select:focus-visible {
+  outline: none;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  border: 0;
+}
+
 .control-stack {
   display: inline-flex;
   gap: var(--space-2);
