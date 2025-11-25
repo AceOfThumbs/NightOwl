@@ -1656,16 +1656,18 @@
       state.nudgeDelta = 0;
       return;
     }
+    const step = clamp(Number(state.dailyStep) || 30, 5, 120);
+    const today = startOfDayInZone(getNow(), state.plannerTimeZone);
+    const targetDate = startOfDayInZone(parseLocalDate(state.targetDate) || today, state.plannerTimeZone);
+
     const reference = state.plannerMode === 'wake' ? currentWake : currentSleep;
-    const targetMinutes = toMinutes(state.targetTime);
+    const targetDateTime = addMinutes(new Date(targetDate), toMinutes(state.targetTime));
+    const targetMinutes = minutesInZone(targetDateTime, state.displayTimeZone);
     let diff = ((targetMinutes - reference + MINUTES_IN_DAY) % MINUTES_IN_DAY + MINUTES_IN_DAY) % MINUTES_IN_DAY;
     if (diff > MINUTES_IN_DAY / 2) diff -= MINUTES_IN_DAY;
     if (state.plannerDirection === 'earlier' && diff > 0) diff -= MINUTES_IN_DAY;
     if (state.plannerDirection === 'later' && diff < 0) diff += MINUTES_IN_DAY;
 
-    const step = clamp(Number(state.dailyStep) || 30, 5, 120);
-    const today = startOfDayInZone(getNow(), state.plannerTimeZone);
-    const targetDate = startOfDayInZone(parseLocalDate(state.targetDate) || today, state.plannerTimeZone);
     const direction = targetDate >= today ? 1 : -1;
     const dayMs = 24 * 60 * 60 * 1000;
     const startDate = new Date(today);
