@@ -72,16 +72,37 @@
   const timezoneLocations = {
     local: { label: 'Local', lat: 40.7128, lon: -74.006 },
     UTC: { label: 'UTC', lat: 0, lon: 0 },
+    'Pacific/Honolulu': { label: 'Pacific/Honolulu', lat: 21.3069, lon: -157.8583 },
+    'America/Anchorage': { label: 'America/Anchorage', lat: 61.2181, lon: -149.9003 },
     'America/Los_Angeles': { label: 'America/Los_Angeles', lat: 34.0522, lon: -118.2437 },
     'America/Denver': { label: 'America/Denver', lat: 39.7392, lon: -104.9903 },
+    'America/Phoenix': { label: 'America/Phoenix', lat: 33.4484, lon: -112.074 },
     'America/Chicago': { label: 'America/Chicago', lat: 41.8781, lon: -87.6298 },
     'America/New_York': { label: 'America/New_York', lat: 40.7128, lon: -74.006 },
+    'America/Toronto': { label: 'America/Toronto', lat: 43.6532, lon: -79.3832 },
+    'America/Sao_Paulo': { label: 'America/Sao_Paulo', lat: -23.5505, lon: -46.6333 },
     'Europe/London': { label: 'Europe/London', lat: 51.5072, lon: -0.1276 },
+    'Europe/Dublin': { label: 'Europe/Dublin', lat: 53.3498, lon: -6.2603 },
+    'Europe/Lisbon': { label: 'Europe/Lisbon', lat: 38.7223, lon: -9.1393 },
     'Europe/Paris': { label: 'Europe/Paris', lat: 48.8566, lon: 2.3522 },
+    'Europe/Amsterdam': { label: 'Europe/Amsterdam', lat: 52.3676, lon: 4.9041 },
     'Europe/Berlin': { label: 'Europe/Berlin', lat: 52.52, lon: 13.405 },
+    'Europe/Madrid': { label: 'Europe/Madrid', lat: 40.4168, lon: -3.7038 },
+    'Europe/Rome': { label: 'Europe/Rome', lat: 41.9028, lon: 12.4964 },
+    'Europe/Moscow': { label: 'Europe/Moscow', lat: 55.7558, lon: 37.6173 },
+    'Africa/Johannesburg': { label: 'Africa/Johannesburg', lat: -26.2041, lon: 28.0473 },
+    'Asia/Dubai': { label: 'Asia/Dubai', lat: 25.2048, lon: 55.2708 },
+    'Asia/Kolkata': { label: 'Asia/Kolkata', lat: 22.5726, lon: 88.3639 },
+    'Asia/Bangkok': { label: 'Asia/Bangkok', lat: 13.7563, lon: 100.5018 },
+    'Asia/Shanghai': { label: 'Asia/Shanghai', lat: 31.2304, lon: 121.4737 },
+    'Asia/Hong_Kong': { label: 'Asia/Hong_Kong', lat: 22.3193, lon: 114.1694 },
     'Asia/Tokyo': { label: 'Asia/Tokyo', lat: 35.6762, lon: 139.6503 },
+    'Asia/Seoul': { label: 'Asia/Seoul', lat: 37.5665, lon: 126.978 },
     'Asia/Singapore': { label: 'Asia/Singapore', lat: 1.3521, lon: 103.8198 },
-    'Australia/Sydney': { label: 'Australia/Sydney', lat: -33.8688, lon: 151.2093 }
+    'Asia/Jakarta': { label: 'Asia/Jakarta', lat: -6.2088, lon: 106.8456 },
+    'Australia/Perth': { label: 'Australia/Perth', lat: -31.9523, lon: 115.8613 },
+    'Australia/Sydney': { label: 'Australia/Sydney', lat: -33.8688, lon: 151.2093 },
+    'Pacific/Auckland': { label: 'Pacific/Auckland', lat: -36.8485, lon: 174.7633 }
   };
 
   const eventTypes = {
@@ -507,8 +528,10 @@
   }
 
   function updateTimezoneToggle() {
+    if (!timezoneToggle) return;
     const tzLabel = timezoneLocations[state.displayTimeZone]?.label || 'Local';
-    timezoneToggle.textContent = tzLabel;
+    timezoneToggle.value = state.displayTimeZone;
+    timezoneToggle.setAttribute('aria-label', `Display time zone (${tzLabel})`);
   }
 
   function setTimeFormat(format) {
@@ -1313,13 +1336,15 @@
     }, duration);
   }
 
-  function populateTimeZoneSelect() {
+  function populateTimeZoneSelect(selectEl) {
+    if (!selectEl) return;
+    selectEl.innerHTML = '';
     const tzs = Object.keys(timezoneLocations);
     tzs.forEach((tz) => {
       const option = document.createElement('option');
       option.value = tz;
       option.textContent = timezoneLocations[tz].label;
-      timeZoneSelect.appendChild(option);
+      selectEl.appendChild(option);
     });
   }
 
@@ -2145,16 +2170,12 @@
   }
 
   function initTimezoneControls() {
-    populateTimeZoneSelect();
+    populateTimeZoneSelect(timeZoneSelect);
+    populateTimeZoneSelect(timezoneToggle);
     setPlannerTimezone(state.plannerTimeZone);
     setDisplayTimezone(state.displayTimeZone);
-    timeZoneSelect.addEventListener('change', (evt) => setPlannerTimezone(evt.target.value));
-    timezoneToggle.addEventListener('click', () => {
-      const options = Array.from(timeZoneSelect.options);
-      const current = options.findIndex((opt) => opt.value === state.displayTimeZone);
-      const next = (current + 1) % options.length;
-      setDisplayTimezone(options[next].value);
-    });
+    if (timeZoneSelect) timeZoneSelect.addEventListener('change', (evt) => setPlannerTimezone(evt.target.value));
+    if (timezoneToggle) timezoneToggle.addEventListener('change', (evt) => setDisplayTimezone(evt.target.value));
   }
 
   function initTimeFormatControls() {
