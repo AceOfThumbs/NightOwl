@@ -16,8 +16,7 @@
         </div>
         <div class="header-actions">
           <div class="pill-group" role="group" aria-label="Locale display">
-            <label class="sr-only" for="timezoneToggle">Display time zone</label>
-            <select id="timezoneToggle" class="pill pill-select"></select>
+            <div id="displayTimeZonePicker" class="timezone-picker timezone-picker--compact" data-allow-local="true"></div>
             <button id="timeFormatToggle" class="pill" type="button"></button>
           </div>
           <div class="control-stack" role="group" aria-label="Interface controls">
@@ -192,10 +191,10 @@
                 </label>
               </div>
             </div>
-            <label class="field">
+            <div class="field">
               <span class="field-label">Time zone</span>
-              <select id="timeZone"></select>
-            </label>
+              <div id="plannerTimeZonePicker" class="timezone-picker" data-allow-local="true"></div>
+            </div>
             <label class="field">
               <span class="field-label">Target <span id="plannerModeLabel">wake</span> time</span>
               <input id="targetTime" type="time" />
@@ -279,6 +278,7 @@
       </div>
     </div>
 
+    <script src="timezones.js"></script>
     <script src="nightowl.js"></script>
   </body>
 </html>
