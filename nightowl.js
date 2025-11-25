@@ -248,6 +248,23 @@
     return normalizeDayMinutes(h * 60 + m);
   }
 
+  function buildZonedDateTime(dayDate, minutes, timeZone = state.plannerTimeZone) {
+    if (!dayDate || Number.isNaN(dayDate.getTime())) return null;
+    const hours = Math.floor(minutes / 60);
+    const mins = minutes % 60;
+    let guess = new Date(Date.UTC(dayDate.getFullYear(), dayDate.getMonth(), dayDate.getDate(), hours, mins));
+
+    for (let i = 0; i < 3; i++) {
+      const { hours: tzHours, minutes: tzMinutes } = toTimeInZone(guess, timeZone);
+      const tzTotal = (tzHours * 60 + tzMinutes) % MINUTES_IN_DAY;
+      const delta = minutes - tzTotal;
+      if (delta === 0) break;
+      guess = addMinutes(guess, delta);
+    }
+
+    return guess;
+  }
+
   function minutesToTime(mins) {
     const m = ((mins % MINUTES_IN_DAY) + MINUTES_IN_DAY) % MINUTES_IN_DAY;
     return `${pad(Math.floor(m / 60))}:${pad(m % 60)}`;
@@ -1657,12 +1674,14 @@
       return;
     }
     const step = clamp(Number(state.dailyStep) || 30, 5, 120);
-    const today = startOfDayInZone(getNow(), state.plannerTimeZone);
+    const today = startOfDayInZone(getNow(), state.displayTimeZone);
     const targetDate = startOfDayInZone(parseLocalDate(state.targetDate) || today, state.plannerTimeZone);
 
     const reference = state.plannerMode === 'wake' ? currentWake : currentSleep;
-    const targetDateTime = addMinutes(new Date(targetDate), toMinutes(state.targetTime));
-    const targetMinutes = minutesInZone(targetDateTime, state.displayTimeZone);
+    const targetZonedDateTime = buildZonedDateTime(targetDate, toMinutes(state.targetTime), state.plannerTimeZone);
+    const targetMinutes = targetZonedDateTime
+      ? minutesInZone(targetZonedDateTime, state.displayTimeZone)
+      : minutesInZone(addMinutes(new Date(targetDate), toMinutes(state.targetTime)), state.displayTimeZone);
     let diff = ((targetMinutes - reference + MINUTES_IN_DAY) % MINUTES_IN_DAY + MINUTES_IN_DAY) % MINUTES_IN_DAY;
     if (diff > MINUTES_IN_DAY / 2) diff -= MINUTES_IN_DAY;
     if (state.plannerDirection === 'earlier' && diff > 0) diff -= MINUTES_IN_DAY;
@@ -1717,7 +1736,7 @@
         weekday: 'short',
         month: 'short',
         day: 'numeric',
-        timeZone: state.plannerTimeZone === 'local' ? undefined : state.plannerTimeZone
+        timeZone: state.displayTimeZone === 'local' ? undefined : state.displayTimeZone
       });
       plan.push({ label, wake, sleep, shift, date: dayDate.toISOString() });
     }
@@ -2087,6 +2106,7 @@
         startSlow: state.startSlow,
         endSlow: state.endSlow,
         timeZone: state.plannerTimeZone,
+        displayTimeZone: state.displayTimeZone,
         timeFormat: state.timeFormat
       },
       events: includeEvents ? state.events.map((evt) => ({ ...evt })) : undefined
@@ -2144,6 +2164,7 @@
       state.endSlow = false;
     }
     state.plannerTimeZone = normalizeTimeZoneValue(planner.timeZone || state.plannerTimeZone);
+    state.displayTimeZone = normalizeTimeZoneValue(planner.displayTimeZone || state.displayTimeZone);
     state.timeFormat = planner.timeFormat === '12h' ? '12h' : state.timeFormat;
     const hasEvents = Array.isArray(snapshot.events);
     if (hasEvents) {
