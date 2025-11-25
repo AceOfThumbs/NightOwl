@@ -20,9 +20,9 @@
   const dayList = $('dayList');
   const addDayItemBtn = $('addDayItem');
   const filterChips = Array.from(document.querySelectorAll('.chip'));
-  const timezoneToggle = $('timezoneToggle');
+  const displayTimeZonePickerRoot = $('displayTimeZonePicker');
+  const plannerTimeZonePickerRoot = $('plannerTimeZonePicker');
   const timeFormatToggle = $('timeFormatToggle');
-  const timeZoneSelect = $('timeZone');
   const targetDateInput = $('targetDate');
   const plannerModeSelect = $('plannerMode');
   const plannerModeLabel = $('plannerModeLabel');
@@ -69,41 +69,8 @@
   const standardDayTabPanel = $('standardDayTab');
   let shareKeyListenerAttached = false;
 
-  const timezoneLocations = {
-    local: { label: 'Local', lat: 40.7128, lon: -74.006 },
-    UTC: { label: 'UTC', lat: 0, lon: 0 },
-    'Pacific/Honolulu': { label: 'Pacific/Honolulu', lat: 21.3069, lon: -157.8583 },
-    'America/Anchorage': { label: 'America/Anchorage', lat: 61.2181, lon: -149.9003 },
-    'America/Los_Angeles': { label: 'America/Los_Angeles', lat: 34.0522, lon: -118.2437 },
-    'America/Denver': { label: 'America/Denver', lat: 39.7392, lon: -104.9903 },
-    'America/Phoenix': { label: 'America/Phoenix', lat: 33.4484, lon: -112.074 },
-    'America/Chicago': { label: 'America/Chicago', lat: 41.8781, lon: -87.6298 },
-    'America/New_York': { label: 'America/New_York', lat: 40.7128, lon: -74.006 },
-    'America/Toronto': { label: 'America/Toronto', lat: 43.6532, lon: -79.3832 },
-    'America/Sao_Paulo': { label: 'America/Sao_Paulo', lat: -23.5505, lon: -46.6333 },
-    'Europe/London': { label: 'Europe/London', lat: 51.5072, lon: -0.1276 },
-    'Europe/Dublin': { label: 'Europe/Dublin', lat: 53.3498, lon: -6.2603 },
-    'Europe/Lisbon': { label: 'Europe/Lisbon', lat: 38.7223, lon: -9.1393 },
-    'Europe/Paris': { label: 'Europe/Paris', lat: 48.8566, lon: 2.3522 },
-    'Europe/Amsterdam': { label: 'Europe/Amsterdam', lat: 52.3676, lon: 4.9041 },
-    'Europe/Berlin': { label: 'Europe/Berlin', lat: 52.52, lon: 13.405 },
-    'Europe/Madrid': { label: 'Europe/Madrid', lat: 40.4168, lon: -3.7038 },
-    'Europe/Rome': { label: 'Europe/Rome', lat: 41.9028, lon: 12.4964 },
-    'Europe/Moscow': { label: 'Europe/Moscow', lat: 55.7558, lon: 37.6173 },
-    'Africa/Johannesburg': { label: 'Africa/Johannesburg', lat: -26.2041, lon: 28.0473 },
-    'Asia/Dubai': { label: 'Asia/Dubai', lat: 25.2048, lon: 55.2708 },
-    'Asia/Kolkata': { label: 'Asia/Kolkata', lat: 22.5726, lon: 88.3639 },
-    'Asia/Bangkok': { label: 'Asia/Bangkok', lat: 13.7563, lon: 100.5018 },
-    'Asia/Shanghai': { label: 'Asia/Shanghai', lat: 31.2304, lon: 121.4737 },
-    'Asia/Hong_Kong': { label: 'Asia/Hong_Kong', lat: 22.3193, lon: 114.1694 },
-    'Asia/Tokyo': { label: 'Asia/Tokyo', lat: 35.6762, lon: 139.6503 },
-    'Asia/Seoul': { label: 'Asia/Seoul', lat: 37.5665, lon: 126.978 },
-    'Asia/Singapore': { label: 'Asia/Singapore', lat: 1.3521, lon: 103.8198 },
-    'Asia/Jakarta': { label: 'Asia/Jakarta', lat: -6.2088, lon: 106.8456 },
-    'Australia/Perth': { label: 'Australia/Perth', lat: -31.9523, lon: 115.8613 },
-    'Australia/Sydney': { label: 'Australia/Sydney', lat: -33.8688, lon: 151.2093 },
-    'Pacific/Auckland': { label: 'Pacific/Auckland', lat: -36.8485, lon: 174.7633 }
-  };
+  const timeZoneCountries = (window.timeZoneData && window.timeZoneData.countries) || [];
+  const timeZoneIndex = (window.timeZoneData && window.timeZoneData.zoneIndex) || new Map();
 
   const eventTypes = {
     sleep: { icon: '🌙', label: 'Sleep', colorKey: 'sleep', defaultDuration: 8 * 60 },
@@ -186,10 +153,47 @@
   };
 
   let yourDayPointerDrag = null;
+  let displayTimeZonePicker = null;
+  let plannerTimeZonePicker = null;
 
   state.targetDate = todayISO();
 
   const formatterCache = new Map();
+
+  function detectLocalTimeZoneId() {
+    try {
+      const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+      return timeZoneIndex.has(tz) ? tz : null;
+    } catch (err) {
+      console.warn('Unable to detect local time zone', err);
+      return null;
+    }
+  }
+
+  function normalizeTimeZoneValue(tz) {
+    if (tz === 'local') return 'local';
+    return timeZoneIndex.has(tz) ? tz : 'local';
+  }
+
+  function getTimeZoneMeta(tz) {
+    if (tz === 'local') {
+      const detected = detectLocalTimeZoneId();
+      if (detected) return timeZoneIndex.get(detected);
+      return null;
+    }
+    return timeZoneIndex.get(tz) || null;
+  }
+
+  function getTimeZoneLabel(tz) {
+    if (tz === 'local') return 'Local';
+    return getTimeZoneMeta(tz)?.label || tz || 'Local';
+  }
+
+  function getTimeZoneLocation(tz) {
+    const meta = getTimeZoneMeta(tz);
+    if (meta && typeof meta.lat === 'number' && typeof meta.lon === 'number') return meta;
+    return timeZoneIndex.get('UTC') || { lat: 0, lon: 0, label: 'UTC' };
+  }
 
   function todayISO(timeZone = state.plannerTimeZone) {
     const now = getNowInZone(timeZone);
@@ -310,8 +314,8 @@
       if (prefs) {
         state.textScale = Number.isFinite(prefs.textScale) ? prefs.textScale : state.textScale;
         state.theme = prefs.theme === 'light' ? 'light' : 'dark';
-        state.displayTimeZone = prefs.displayTimeZone || prefs.timeZone || state.displayTimeZone;
-        state.plannerTimeZone = prefs.plannerTimeZone || prefs.timeZone || state.plannerTimeZone;
+        state.displayTimeZone = normalizeTimeZoneValue(prefs.displayTimeZone || prefs.timeZone || state.displayTimeZone);
+        state.plannerTimeZone = normalizeTimeZoneValue(prefs.plannerTimeZone || prefs.timeZone || state.plannerTimeZone);
         state.targetTime = prefs.targetTime || state.targetTime;
         state.dailyStep = clamp(Number(prefs.dailyStep) || state.dailyStep, 5, 120);
         state.plannerMode = prefs.plannerMode || state.plannerMode;
@@ -514,24 +518,17 @@
   }
 
   function setDisplayTimezone(tz) {
-    state.displayTimeZone = timezoneLocations[tz] ? tz : 'local';
-    updateTimezoneToggle();
+    state.displayTimeZone = normalizeTimeZoneValue(tz);
+    if (displayTimeZonePicker) displayTimeZonePicker.setValue(state.displayTimeZone);
     persistState();
     render();
   }
 
   function setPlannerTimezone(tz) {
-    state.plannerTimeZone = timezoneLocations[tz] ? tz : 'local';
-    if (timeZoneSelect) timeZoneSelect.value = state.plannerTimeZone;
+    state.plannerTimeZone = normalizeTimeZoneValue(tz);
+    if (plannerTimeZonePicker) plannerTimeZonePicker.setValue(state.plannerTimeZone);
     persistState();
     renderNudgePlan();
-  }
-
-  function updateTimezoneToggle() {
-    if (!timezoneToggle) return;
-    const tzLabel = timezoneLocations[state.displayTimeZone]?.label || 'Local';
-    timezoneToggle.value = state.displayTimeZone;
-    timezoneToggle.setAttribute('aria-label', `Display time zone (${tzLabel})`);
   }
 
   function setTimeFormat(format) {
@@ -1336,16 +1333,176 @@
     }, duration);
   }
 
-  function populateTimeZoneSelect(selectEl) {
-    if (!selectEl) return;
-    selectEl.innerHTML = '';
-    const tzs = Object.keys(timezoneLocations);
-    tzs.forEach((tz) => {
+  function createTimeZonePicker(rootEl, options = {}) {
+    if (!rootEl) return null;
+    const { allowLocal = true, value = 'local', onChange = () => {}, labels = {}, labelClass = '' } = options;
+    const localLabel = labels.local || 'Use local time';
+    const countryLabel = labels.country || 'Country or region';
+    const zoneLabel = labels.zone || 'Time zone';
+    const pickerId = rootEl.id || `tz-picker-${Math.floor(Math.random() * 10000)}`;
+    const compact = rootEl.classList.contains('timezone-picker--compact');
+
+    rootEl.classList.add('timezone-picker');
+    rootEl.innerHTML = '';
+
+    const controls = document.createElement('div');
+    controls.className = 'timezone-picker__controls';
+
+    const countryField = document.createElement('div');
+    const countrySelectId = `${pickerId}-country`;
+    const countryLabelEl = document.createElement('label');
+    countryLabelEl.className = `timezone-picker__label ${labelClass}`.trim();
+    countryLabelEl.setAttribute('for', countrySelectId);
+    countryLabelEl.textContent = countryLabel;
+
+    const countrySelect = document.createElement('select');
+    countrySelect.id = countrySelectId;
+    countrySelect.className = `timezone-picker__select${compact ? ' pill-select' : ''}`;
+
+    const countryPlaceholder = document.createElement('option');
+    countryPlaceholder.value = '';
+    countryPlaceholder.textContent = 'Select a country';
+    countryPlaceholder.disabled = true;
+    countrySelect.appendChild(countryPlaceholder);
+
+    timeZoneCountries.forEach((country) => {
       const option = document.createElement('option');
-      option.value = tz;
-      option.textContent = timezoneLocations[tz].label;
-      selectEl.appendChild(option);
+      option.value = country.code;
+      option.textContent = country.name;
+      countrySelect.appendChild(option);
     });
+
+    countryField.appendChild(countryLabelEl);
+    countryField.appendChild(countrySelect);
+
+    const zoneField = document.createElement('div');
+    const zoneSelectId = `${pickerId}-zone`;
+    const zoneLabelEl = document.createElement('label');
+    zoneLabelEl.className = `timezone-picker__label ${labelClass}`.trim();
+    zoneLabelEl.setAttribute('for', zoneSelectId);
+    zoneLabelEl.textContent = zoneLabel;
+
+    const zoneSelect = document.createElement('select');
+    zoneSelect.id = zoneSelectId;
+    zoneSelect.className = `timezone-picker__select${compact ? ' pill-select' : ''}`;
+    zoneSelect.disabled = true;
+
+    zoneField.appendChild(zoneLabelEl);
+    zoneField.appendChild(zoneSelect);
+
+    controls.appendChild(countryField);
+    controls.appendChild(zoneField);
+
+    let suppressChange = false;
+
+    function populateZones(countryCode, selectedZoneId = null) {
+      zoneSelect.innerHTML = '';
+      const country = timeZoneCountries.find((c) => c.code === countryCode);
+      const zones = country
+        ? country.zones
+            .slice()
+            .sort(
+              (a, b) => (a.offset || '').localeCompare(b.offset || '') || a.label.localeCompare(b.label)
+            )
+        : [];
+      zoneSelect.disabled = !zones.length;
+      zones.forEach((zone) => {
+        const option = document.createElement('option');
+        option.value = zone.id;
+        option.textContent = `${zone.label}${zone.offset ? ` (${zone.offset})` : ''}`;
+        zoneSelect.appendChild(option);
+      });
+
+      if (!zones.length) return;
+
+      const defaultZone = selectedZoneId
+        ? zones.find((z) => z.id === selectedZoneId)
+        : zones.find((z) => z.isPrimary) || zones[0];
+      if (defaultZone) {
+        zoneSelect.value = defaultZone.id;
+      }
+    }
+
+    function selectCountry(code, zoneId = null) {
+      countrySelect.value = code || '';
+      populateZones(code, zoneId);
+      if (zoneId) zoneSelect.value = zoneId;
+    }
+
+    function handleCountryChange() {
+      if (suppressChange) return;
+      const code = countrySelect.value;
+      const country = timeZoneCountries.find((c) => c.code === code);
+      const fallback = country ? country.zones.find((z) => z.isPrimary) || country.zones[0] : null;
+      populateZones(code, fallback?.id);
+      if (fallback) {
+        if (allowLocal && localToggle) localToggle.checked = false;
+        onChange(fallback.id);
+      }
+    }
+
+    function handleZoneChange() {
+      if (suppressChange) return;
+      if (!zoneSelect.value) return;
+      if (allowLocal && localToggle) localToggle.checked = false;
+      onChange(zoneSelect.value);
+    }
+
+    let localToggle = null;
+    if (allowLocal) {
+      const localId = `${pickerId}-local`;
+      const localWrap = document.createElement('label');
+      localWrap.className = 'timezone-picker__local';
+      localToggle = document.createElement('input');
+      localToggle.type = 'checkbox';
+      localToggle.id = localId;
+      const localText = document.createElement('span');
+      localText.textContent = localLabel;
+      localWrap.appendChild(localToggle);
+      localWrap.appendChild(localText);
+      rootEl.appendChild(localWrap);
+
+      localToggle.addEventListener('change', () => {
+        if (suppressChange) return;
+        if (localToggle.checked) {
+          onChange('local');
+        }
+      });
+    }
+
+    countrySelect.addEventListener('change', handleCountryChange);
+    zoneSelect.addEventListener('change', handleZoneChange);
+
+    rootEl.appendChild(controls);
+
+    function setValue(next) {
+      suppressChange = true;
+      const resolved = normalizeTimeZoneValue(next);
+      if (localToggle) localToggle.checked = resolved === 'local';
+
+      if (resolved === 'local') {
+        const detected = detectLocalTimeZoneId();
+        const meta = detected ? timeZoneIndex.get(detected) : null;
+        if (meta) {
+          selectCountry(meta.countryCode, meta.id);
+        } else {
+          selectCountry(null);
+        }
+      } else {
+        const meta = timeZoneIndex.get(resolved);
+        if (meta) {
+          selectCountry(meta.countryCode, meta.id);
+        } else {
+          selectCountry(null);
+        }
+      }
+
+      suppressChange = false;
+    }
+
+    setValue(value);
+
+    return { setValue };
   }
 
   function renderRealDayList() {
@@ -1402,7 +1559,7 @@
   }
 
   function calculateSunTimes(timeZone) {
-    const loc = timezoneLocations[timeZone] || timezoneLocations.local;
+    const loc = getTimeZoneLocation(timeZone);
     const now = getNowInZone(timeZone);
     const date = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const sun = solarSunriseSunset(date, loc.lat, loc.lon);
@@ -1984,7 +2141,7 @@
       state.startSlow = false;
       state.endSlow = false;
     }
-    state.plannerTimeZone = planner.timeZone || state.plannerTimeZone;
+    state.plannerTimeZone = normalizeTimeZoneValue(planner.timeZone || state.plannerTimeZone);
     state.timeFormat = planner.timeFormat === '12h' ? '12h' : state.timeFormat;
     const hasEvents = Array.isArray(snapshot.events);
     if (hasEvents) {
@@ -2175,12 +2332,20 @@
   }
 
   function initTimezoneControls() {
-    populateTimeZoneSelect(timeZoneSelect);
-    populateTimeZoneSelect(timezoneToggle);
-    setPlannerTimezone(state.plannerTimeZone);
-    setDisplayTimezone(state.displayTimeZone);
-    if (timeZoneSelect) timeZoneSelect.addEventListener('change', (evt) => setPlannerTimezone(evt.target.value));
-    if (timezoneToggle) timezoneToggle.addEventListener('change', (evt) => setDisplayTimezone(evt.target.value));
+    displayTimeZonePicker = createTimeZonePicker(displayTimeZonePickerRoot, {
+      value: state.displayTimeZone,
+      allowLocal: true,
+      onChange: setDisplayTimezone,
+      labels: { country: 'Country or region', zone: 'Time zone', local: 'Use local time' },
+      labelClass: 'sr-only'
+    });
+
+    plannerTimeZonePicker = createTimeZonePicker(plannerTimeZonePickerRoot, {
+      value: state.plannerTimeZone,
+      allowLocal: true,
+      onChange: setPlannerTimezone,
+      labels: { country: 'Country or region', zone: 'Time zone', local: 'Use local time' }
+    });
   }
 
   function initTimeFormatControls() {

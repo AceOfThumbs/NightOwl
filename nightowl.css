@@ -731,6 +731,69 @@ textarea {
   color: var(--text-3);
 }
 
+.timezone-picker {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.timezone-picker__local {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--text-1);
+}
+
+.timezone-picker__controls {
+  display: grid;
+  gap: var(--space-2);
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+}
+
+.timezone-picker__label {
+  font-size: 0.875rem;
+  color: var(--text-2);
+}
+
+.timezone-picker__select {
+  width: 100%;
+}
+
+.timezone-picker__select:disabled {
+  opacity: 0.7;
+}
+
+.timezone-picker--compact {
+  flex-direction: row;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.timezone-picker--compact .timezone-picker__controls {
+  grid-template-columns: repeat(2, minmax(140px, 1fr));
+  gap: var(--space-2);
+  background: var(--card-alt);
+  border: 1px solid var(--muted);
+  border-radius: 999px;
+  padding: 2px var(--space-2);
+}
+
+.timezone-picker--compact .timezone-picker__label {
+  display: none;
+}
+
+.timezone-picker--compact .timezone-picker__select {
+  background: transparent;
+  border: none;
+  padding: var(--space-2) var(--space-3);
+  min-height: auto;
+  color: var(--text-2);
+}
+
+.timezone-picker--compact .timezone-picker__select:focus-visible {
+  outline: none;
+}
+
 input,
 select {
   background: var(--card-subtle);
