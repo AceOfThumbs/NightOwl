@@ -10,6 +10,7 @@
   const MIN_EXPORT_DURATION = 1;
   const TEXT_SCALE_STEP = 0.1;
   const SHARE_PARAM = 'planner';
+  const SHARE_HASH_KEY = 'p';
   const SAVED_PLANNER_KEY = 'nightowl.savedPlanner.v1';
 
   const $ = (id) => document.getElementById(id);
@@ -2113,10 +2114,267 @@
     };
   }
 
+  function buildPlannerWireSnapshot(includeEvents) {
+    return {
+      v: 1,
+      p: {
+        m: state.plannerMode,
+        d: state.plannerDirection,
+        t: state.targetTime,
+        dt: state.targetDate,
+        s: state.dailyStep,
+        ss: state.startSlow ? 1 : 0,
+        es: state.endSlow ? 1 : 0,
+        tz: state.plannerTimeZone,
+        dz: state.displayTimeZone,
+        tf: state.timeFormat,
+        lw: state.lockToWake ? 1 : 0
+      },
+      e: includeEvents
+        ? state.events.map((evt) => [evt.type, evt.title, evt.startMin, evt.duration])
+        : undefined
+    };
+  }
+
+  function expandPlannerWireSnapshot(wire) {
+    if (!wire || typeof wire !== 'object') return null;
+    const planner = wire.p || {};
+    const events = Array.isArray(wire.e)
+      ? wire.e.map((evt, idx) => {
+          const [type, title, startMin, duration] = Array.isArray(evt) ? evt : [];
+          const created = createEvent(type || 'custom', title || `Event ${idx + 1}`, Number(startMin) || 0, Number(duration));
+          return { ...created, duration: created.duration, endMin: (created.startMin + created.duration) % MINUTES_IN_DAY };
+        })
+      : undefined;
+
+    return {
+      version: wire.v || 1,
+      planner: {
+        plannerMode: planner.m,
+        plannerDirection: planner.d,
+        targetTime: planner.t,
+        targetDate: planner.dt,
+        dailyStep: planner.s,
+        startSlow: planner.ss === 1,
+        endSlow: planner.es === 1,
+        timeZone: planner.tz,
+        displayTimeZone: planner.dz,
+        timeFormat: planner.tf,
+        lockToWake: planner.lw === 1
+      },
+      events
+    };
+  }
+
+  function toURLSafeBase64(b64) {
+    return b64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
+  }
+
+  function fromURLSafeBase64(input) {
+    const normalized = input.replace(/-/g, '+').replace(/_/g, '/');
+    const padding = normalized.length % 4 === 0 ? '' : '='.repeat(4 - (normalized.length % 4));
+    return normalized + padding;
+  }
+
+  // Minimal LZ-based compression derived from LZ-String (MIT License)
+  function lzCompress(uncompressed) {
+    const dictionary = new Map();
+    const dictionaryToCreate = new Set();
+    let c = '';
+    let wc = '';
+    let w = '';
+    const data = [];
+    let enlargeIn = 2;
+    let dictSize = 3;
+    let numBits = 2;
+    for (let i = 0; i < uncompressed.length; i += 1) {
+      c = uncompressed.charAt(i);
+      if (!dictionary.has(c)) {
+        dictionary.set(c, dictSize++);
+        dictionaryToCreate.add(c);
+      }
+      wc = w + c;
+      if (dictionary.has(wc)) {
+        w = wc;
+      } else {
+        if (dictionaryToCreate.has(w)) {
+          const value = w.charCodeAt(0);
+          if (value < 256) {
+            for (let ii = 0; ii < numBits; ii += 1) data.push(0);
+            let bits = 8;
+            for (let ii = 0; ii < bits; ii += 1) data.push((value >> ii) & 1);
+          } else {
+            let bits = 16;
+            for (let ii = 0; ii < numBits; ii += 1) data.push(1);
+            for (let ii = 0; ii < bits; ii += 1) data.push((value >> ii) & 1);
+          }
+          enlargeIn -= 1;
+          if (enlargeIn === 0) {
+            enlargeIn = 2 ** numBits;
+            numBits += 1;
+          }
+          dictionaryToCreate.delete(w);
+        } else {
+          const value = dictionary.get(w);
+          for (let ii = 0; ii < numBits; ii += 1) data.push((value >> ii) & 1);
+        }
+        enlargeIn -= 1;
+        if (enlargeIn === 0) {
+          enlargeIn = 2 ** numBits;
+          numBits += 1;
+        }
+        dictionary.set(wc, dictSize++);
+        w = String(c);
+      }
+    }
+    if (w !== '') {
+      if (dictionaryToCreate.has(w)) {
+        const value = w.charCodeAt(0);
+        if (value < 256) {
+          for (let ii = 0; ii < numBits; ii += 1) data.push(0);
+          let bits = 8;
+          for (let ii = 0; ii < bits; ii += 1) data.push((value >> ii) & 1);
+        } else {
+          let bits = 16;
+          for (let ii = 0; ii < numBits; ii += 1) data.push(1);
+          for (let ii = 0; ii < bits; ii += 1) data.push((value >> ii) & 1);
+        }
+        enlargeIn -= 1;
+        if (enlargeIn === 0) {
+          enlargeIn = 2 ** numBits;
+          numBits += 1;
+        }
+        dictionaryToCreate.delete(w);
+      } else {
+        const value = dictionary.get(w);
+        for (let ii = 0; ii < numBits; ii += 1) data.push((value >> ii) & 1);
+      }
+      enlargeIn -= 1;
+      if (enlargeIn === 0) {
+        enlargeIn = 2 ** numBits;
+        numBits += 1;
+      }
+    }
+
+    const value = 2;
+    for (let ii = 0; ii < numBits; ii += 1) data.push((value >> ii) & 1);
+
+    while (data.length % 8 !== 0) data.push(0);
+
+    let output = '';
+    for (let i = 0; i < data.length; i += 8) {
+      let charCode = 0;
+      for (let j = 0; j < 8; j += 1) {
+        charCode |= data[i + j] << j;
+      }
+      output += String.fromCharCode(charCode);
+    }
+
+    return output;
+  }
+
+  function lzDecompress(compressed) {
+    if (compressed === null || compressed === undefined) return '';
+    let dictionary = ['0', '1', '2'];
+    let next;
+    let enlargeIn = 4;
+    let dictSize = 4;
+    let numBits = 3;
+    let entry = '';
+    let result = '';
+    let i;
+    let w;
+    const data = { val: compressed.charCodeAt(0), position: 32768, index: 1 };
+
+    function readBits(n) {
+      let bits = 0;
+      let maxpower = 2 ** n;
+      let power = 1;
+      while (power !== maxpower) {
+        const resb = data.val & data.position;
+        data.position >>= 1;
+        if (data.position === 0) {
+          data.position = 32768;
+          data.val = compressed.charCodeAt(data.index++);
+        }
+        bits |= (resb > 0 ? 1 : 0) * power;
+        power <<= 1;
+      }
+      return bits;
+    }
+
+    const bits = readBits(2);
+    switch (bits) {
+      case 0:
+        next = String.fromCharCode(readBits(8));
+        break;
+      case 1:
+        next = String.fromCharCode(readBits(16));
+        break;
+      default:
+        return '';
+    }
+    dictionary[3] = next;
+    w = next;
+    result = next;
+    while (true) {
+      if (data.index > compressed.length) return '';
+      const cc = readBits(numBits);
+      let c;
+      if (cc === 0) {
+        c = String.fromCharCode(readBits(8));
+        dictionary[dictSize++] = c;
+        c = dictSize - 1;
+        enlargeIn -= 1;
+      } else if (cc === 1) {
+        c = String.fromCharCode(readBits(16));
+        dictionary[dictSize++] = c;
+        c = dictSize - 1;
+        enlargeIn -= 1;
+      } else if (cc === 2) {
+        return result;
+      } else {
+        c = cc;
+      }
+
+      if (enlargeIn === 0) {
+        enlargeIn = 2 ** numBits;
+        numBits += 1;
+      }
+
+      if (c < dictionary.length && dictionary[c] !== undefined) {
+        entry = dictionary[c];
+      } else if (c === dictSize) {
+        entry = w + w.charAt(0);
+      } else {
+        return '';
+      }
+
+      result += entry;
+      dictionary[dictSize++] = w + entry.charAt(0);
+      enlargeIn -= 1;
+      w = entry;
+      if (enlargeIn === 0) {
+        enlargeIn = 2 ** numBits;
+        numBits += 1;
+      }
+    }
+  }
+
+  function compressToURLSafeBase64(text) {
+    const compressed = lzCompress(text);
+    return toURLSafeBase64(btoa(compressed));
+  }
+
+  function decompressFromURLSafeBase64(payload) {
+    const expanded = fromURLSafeBase64(payload);
+    return lzDecompress(atob(expanded));
+  }
+
   function encodeSharePayload(includeEvents) {
     try {
-      const json = JSON.stringify(buildPlannerSnapshot(includeEvents));
-      return btoa(encodeURIComponent(json));
+      const json = JSON.stringify(buildPlannerWireSnapshot(includeEvents));
+      return compressToURLSafeBase64(json);
     } catch (err) {
       console.warn('Failed to encode share payload', err);
       return '';
@@ -2126,10 +2384,21 @@
   function decodeSharePayload(payload) {
     if (!payload) return null;
     try {
-      const json = decodeURIComponent(atob(payload));
-      return JSON.parse(json);
+      const json = decompressFromURLSafeBase64(payload);
+      if (json) {
+        const parsed = JSON.parse(json);
+        const expanded = expandPlannerWireSnapshot(parsed);
+        if (expanded) return expanded;
+        return parsed;
+      }
     } catch (err) {
       console.warn('Failed to decode shared planner', err);
+    }
+    try {
+      const legacyJson = decodeURIComponent(atob(payload));
+      return JSON.parse(legacyJson);
+    } catch (err) {
+      console.warn('Failed to decode legacy shared planner', err);
       return null;
     }
   }
@@ -2139,6 +2408,8 @@
     if (!trimmed) return null;
     try {
       const maybeUrl = new URL(trimmed);
+      const hashParams = new URLSearchParams(maybeUrl.hash.replace(/^#/, ''));
+      if (hashParams.has(SHARE_HASH_KEY)) return hashParams.get(SHARE_HASH_KEY);
       return maybeUrl.searchParams.get(SHARE_PARAM) || trimmed;
     } catch (err) {
       return trimmed;
@@ -2166,6 +2437,9 @@
     state.plannerTimeZone = normalizeTimeZoneValue(planner.timeZone || state.plannerTimeZone);
     state.displayTimeZone = normalizeTimeZoneValue(planner.displayTimeZone || state.displayTimeZone);
     state.timeFormat = planner.timeFormat === '12h' ? '12h' : state.timeFormat;
+    if (typeof planner.lockToWake === 'boolean') {
+      state.lockToWake = planner.lockToWake;
+    }
     const hasEvents = Array.isArray(snapshot.events);
     if (hasEvents) {
       state.events = snapshot.events.map((evt) => normalizeEvent(evt)).filter(Boolean);
@@ -2183,7 +2457,8 @@
     const code = encodeSharePayload(includeEvents);
     if (!code) return { code: '', url: '' };
     const url = new URL(window.location.href);
-    url.searchParams.set(SHARE_PARAM, code);
+    url.searchParams.delete(SHARE_PARAM);
+    url.hash = `${SHARE_HASH_KEY}=${code}`;
     return { code, url: url.toString() };
   }
 
@@ -2266,8 +2541,9 @@
   }
 
   function loadSharedPlannerFromURL() {
+    const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ''));
     const params = new URLSearchParams(window.location.search);
-    const code = params.get(SHARE_PARAM);
+    const code = hashParams.get(SHARE_HASH_KEY) || params.get(SHARE_PARAM);
     if (!code) return;
     const snapshot = decodeSharePayload(code);
     if (!snapshot) {
