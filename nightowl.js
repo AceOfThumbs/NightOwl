@@ -2171,7 +2171,10 @@
   }
 
   function fromURLSafeBase64(input) {
-    const normalized = input.replace(/-/g, '+').replace(/_/g, '/');
+    // Some environments (notably URL query strings) coerce "+" characters into spaces
+    // when reading parameters. Normalize those back to "+" so legacy shared links that
+    // used standard Base64 still decode correctly.
+    const normalized = input.replace(/\s/g, '+').replace(/-/g, '+').replace(/_/g, '/');
     const padding = normalized.length % 4 === 0 ? '' : '='.repeat(4 - (normalized.length % 4));
     return normalized + padding;
   }
