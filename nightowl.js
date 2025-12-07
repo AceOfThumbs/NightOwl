@@ -9,7 +9,7 @@
   const SNAP_SHIFT = 15;
   const MIN_EXPORT_DURATION = 1;
   const TEXT_SCALE_STEP = 0.1;
-  const SHARE_PARAM = 'planner';
+  const SHARE_HASH_KEY = 'p';
   const SAVED_PLANNER_KEY = 'nightowl.savedPlanner.v1';
 
   const $ = (id) => document.getElementById(id);
@@ -2113,21 +2113,165 @@
     };
   }
 
-  function encodeSharePayload(includeEvents) {
+  const shareTextEncoder = new TextEncoder();
+  const shareTextDecoder = new TextDecoder();
+
+  function plannerSnapshotToWire(includeEvents) {
+    const snapshot = buildPlannerSnapshot(includeEvents);
+    const planner = snapshot.planner || {};
+
+    const wire = {
+      v: 1,
+      // Planner packed into an array of short keys for a compact wire format
+      p: [
+        planner.plannerMode || '',
+        planner.plannerDirection || '',
+        planner.targetTime || '',
+        planner.targetDate || '',
+        Number(planner.dailyStep) || 0,
+        planner.startSlow ? 1 : 0,
+        planner.endSlow ? 1 : 0,
+        planner.timeZone || '',
+        planner.displayTimeZone || '',
+        planner.timeFormat || ''
+      ]
+    };
+
+    if (Array.isArray(snapshot.events)) {
+      // Events also use arrays to avoid verbose object keys in the shared payload
+      wire.e = snapshot.events.map((evt) => {
+        const start = Number.isFinite(evt.startMin) ? evt.startMin : 0;
+        const duration = Number.isFinite(evt.duration) ? evt.duration : 0;
+        const end = Number.isFinite(evt.endMin)
+          ? evt.endMin
+          : Number.isFinite(start + duration)
+          ? (start + duration) % MINUTES_IN_DAY
+          : 0;
+        return [
+          evt.id || '',
+          evt.type || 'custom',
+          evt.title || '',
+          start,
+          duration,
+          end,
+          evt.repeat || 'daily'
+        ];
+      });
+    }
+
+    return wire;
+  }
+
+  function wireToPlannerSnapshot(wire) {
+    if (!wire || typeof wire !== 'object') throw new Error('Invalid wire payload');
+    const planner = Array.isArray(wire.p) ? wire.p : [];
+
+    const snapshot = {
+      version: 1,
+      planner: {
+        plannerMode: planner[0],
+        plannerDirection: planner[1],
+        targetTime: planner[2],
+        targetDate: planner[3],
+        dailyStep: planner[4],
+        startSlow: Boolean(planner[5]),
+        endSlow: Boolean(planner[6]),
+        timeZone: planner[7],
+        displayTimeZone: planner[8],
+        timeFormat: planner[9]
+      }
+    };
+
+    if (Array.isArray(wire.e)) {
+      snapshot.events = wire.e.map((evt) => ({
+        id: evt[0],
+        type: evt[1],
+        title: evt[2],
+        startMin: evt[3],
+        duration: evt[4],
+        endMin: evt[5],
+        repeat: evt[6]
+      }));
+    }
+
+    return snapshot;
+  }
+
+  function toUrlSafeBase64(bytes) {
+    let binary = '';
+    bytes.forEach((b) => {
+      binary += String.fromCharCode(b);
+    });
+    return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
+  }
+
+  function fromUrlSafeBase64(input) {
+    const normalized = input.replace(/-/g, '+').replace(/_/g, '/');
+    const padded = normalized + '='.repeat((4 - (normalized.length % 4 || 4)) % 4);
+    const binary = atob(padded);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) {
+      bytes[i] = binary.charCodeAt(i);
+    }
+    return bytes;
+  }
+
+  async function compressStringToBase64(input) {
+    const encoded = shareTextEncoder.encode(input);
+    if (typeof CompressionStream === 'function') {
+      try {
+        const cs = new CompressionStream('gzip');
+        const writer = cs.writable.getWriter();
+        await writer.write(encoded);
+        await writer.close();
+        const compressed = new Uint8Array(await new Response(cs.readable).arrayBuffer());
+        return toUrlSafeBase64(compressed);
+      } catch (err) {
+        console.warn('Share compression failed; falling back to uncompressed payload', err);
+      }
+    }
+    return toUrlSafeBase64(encoded);
+  }
+
+  async function decompressBase64String(input) {
+    const encoded = fromUrlSafeBase64(input);
+    if (typeof DecompressionStream === 'function') {
+      try {
+        const ds = new DecompressionStream('gzip');
+        const writer = ds.writable.getWriter();
+        await writer.write(encoded);
+        await writer.close();
+        const decompressed = await new Response(ds.readable).arrayBuffer();
+        return shareTextDecoder.decode(decompressed);
+      } catch (err) {
+        console.warn('Share decompression failed; attempting raw decode', err);
+      }
+    }
     try {
-      const json = JSON.stringify(buildPlannerSnapshot(includeEvents));
-      return btoa(encodeURIComponent(json));
+      return shareTextDecoder.decode(encoded);
+    } catch (err) {
+      console.warn('Share payload decode failed', err);
+      return '';
+    }
+  }
+
+  async function encodeSharePayload(includeEvents) {
+    try {
+      const wire = plannerSnapshotToWire(includeEvents);
+      const json = JSON.stringify(wire);
+      return await compressStringToBase64(json);
     } catch (err) {
       console.warn('Failed to encode share payload', err);
       return '';
     }
   }
 
-  function decodeSharePayload(payload) {
+  async function decodeSharePayload(payload) {
     if (!payload) return null;
     try {
-      const json = decodeURIComponent(atob(payload));
-      return JSON.parse(json);
+      const json = await decompressBase64String(payload);
+      if (!json) return null;
+      return wireToPlannerSnapshot(JSON.parse(json));
     } catch (err) {
       console.warn('Failed to decode shared planner', err);
       return null;
@@ -2137,11 +2281,15 @@
   function extractShareCode(input) {
     const trimmed = (input || '').trim();
     if (!trimmed) return null;
+    const parseHash = (hash) => {
+      const params = new URLSearchParams(hash.replace(/^#/, ''));
+      return params.get(SHARE_HASH_KEY);
+    };
     try {
       const maybeUrl = new URL(trimmed);
-      return maybeUrl.searchParams.get(SHARE_PARAM) || trimmed;
+      return parseHash(maybeUrl.hash) || trimmed;
     } catch (err) {
-      return trimmed;
+      return parseHash(trimmed) || trimmed;
     }
   }
 
@@ -2179,11 +2327,15 @@
     render();
   }
 
-  function generateShareLink(includeEvents) {
-    const code = encodeSharePayload(includeEvents);
-    if (!code) return { code: '', url: '' };
+  async function generateShareLink(includeEvents) {
+    const code = await encodeSharePayload(includeEvents);
     const url = new URL(window.location.href);
-    url.searchParams.set(SHARE_PARAM, code);
+    if (code) {
+      url.hash = `${SHARE_HASH_KEY}=${code}`;
+    } else {
+      url.hash = '';
+    }
+    window.history.replaceState(null, '', url);
     return { code, url: url.toString() };
   }
 
@@ -2193,10 +2345,10 @@
     return `${code.slice(0, 60)}…${code.slice(-16)}`;
   }
 
-  function updateShareDialog() {
+  async function updateShareDialog() {
     if (!shareLayer) return;
     state.shareIncludeEvents = Boolean(shareIncludeEventsToggle?.checked);
-    const { code, url } = generateShareLink(state.shareIncludeEvents);
+    const { code, url } = await generateShareLink(state.shareIncludeEvents);
     if (shareLinkInput) shareLinkInput.value = url;
     if (shareCode) {
       shareCode.textContent = formatShareCodePreview(code);
@@ -2241,7 +2393,7 @@
     showToast('Planner saved in this browser', 'success');
   }
 
-  function handleLoadPlanner() {
+  async function handleLoadPlanner() {
     const saved = localStorage.getItem(SAVED_PLANNER_KEY);
     if (saved) {
       try {
@@ -2256,7 +2408,7 @@
     const input = window.prompt('Paste a shared NightOwl link or code to load a planner:');
     if (!input) return;
     const code = extractShareCode(input);
-    const snapshot = decodeSharePayload(code);
+    const snapshot = await decodeSharePayload(code);
     if (!snapshot) {
       showToast('Unable to load planner', 'error');
       return;
@@ -2265,11 +2417,11 @@
     showToast('Shared planner loaded', 'success');
   }
 
-  function loadSharedPlannerFromURL() {
-    const params = new URLSearchParams(window.location.search);
-    const code = params.get(SHARE_PARAM);
+  async function loadSharedPlannerFromURL() {
+    const params = new URLSearchParams(window.location.hash.replace(/^#/, ''));
+    const code = params.get(SHARE_HASH_KEY);
     if (!code) return;
-    const snapshot = decodeSharePayload(code);
+    const snapshot = await decodeSharePayload(code);
     if (!snapshot) {
       showToast('Unable to load shared planner from link', 'error');
       return;
@@ -2447,9 +2599,9 @@
     }
   }
 
-  function init() {
+  async function init() {
     loadState();
-    loadSharedPlannerFromURL();
+    await loadSharedPlannerFromURL();
     applyTheme(state.theme);
     initTextScaling();
     initThemeButtons();
