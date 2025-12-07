@@ -2274,8 +2274,8 @@
       return wireToPlannerSnapshot(JSON.parse(json));
     } catch (err) {
       console.warn('Failed to decode shared planner', err);
-      return null;
     }
+    return null;
   }
 
   function extractShareCode(input) {
@@ -2314,6 +2314,9 @@
     state.plannerTimeZone = normalizeTimeZoneValue(planner.timeZone || state.plannerTimeZone);
     state.displayTimeZone = normalizeTimeZoneValue(planner.displayTimeZone || state.displayTimeZone);
     state.timeFormat = planner.timeFormat === '12h' ? '12h' : state.timeFormat;
+    if (typeof planner.lockToWake === 'boolean') {
+      state.lockToWake = planner.lockToWake;
+    }
     const hasEvents = Array.isArray(snapshot.events);
     if (hasEvents) {
       state.events = snapshot.events.map((evt) => normalizeEvent(evt)).filter(Boolean);
