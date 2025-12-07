@@ -2172,8 +2172,7 @@
 
   function fromURLSafeBase64(input) {
     // Some environments (notably URL query strings) coerce "+" characters into spaces
-    // when reading parameters. Normalize those back to "+" so legacy shared links that
-    // used standard Base64 still decode correctly.
+    // when reading parameters. Normalize those back to "+" before decoding.
     const normalized = input.replace(/\s/g, '+').replace(/-/g, '+').replace(/_/g, '/');
     const padding = normalized.length % 4 === 0 ? '' : '='.repeat(4 - (normalized.length % 4));
     return normalized + padding;
@@ -2397,13 +2396,7 @@
     } catch (err) {
       console.warn('Failed to decode shared planner', err);
     }
-    try {
-      const legacyJson = decodeURIComponent(atob(payload));
-      return JSON.parse(legacyJson);
-    } catch (err) {
-      console.warn('Failed to decode legacy shared planner', err);
-      return null;
-    }
+    return null;
   }
 
   function extractShareCode(input) {
