@@ -492,6 +492,35 @@
   function normalizeTimeString(value,defaultValue){
     return minutesToTimeString(toMinutes(value||defaultValue));
   }
+  function decodeLegacySharePayload(payload){
+    if(!payload||!String(payload).trim()) return {ok:false,message:'Shared code is empty.'};
+    const normalized=String(payload).trim().replace(/-/g,'+').replace(/_/g,'/');
+    const padding=(4-(normalized.length%4))%4;
+    try{
+      let decoded;
+      if(typeof atob==='function'){
+        decoded=atob(normalized+'='.repeat(padding));
+      } else if(typeof Buffer!=='undefined'){
+        decoded=Buffer.from(normalized+'='.repeat(padding),'base64').toString('utf8');
+      } else {
+        throw new Error('Unsupported environment');
+      }
+      return {ok:true,text:decoded};
+    }catch(err){
+      return {ok:false,message:'Legacy shared code is not valid Base64.'};
+    }
+  }
+  function decodeLegacySharedPlan(text){
+    const payload=decodeLegacySharePayload(text);
+    if(!payload.ok) return payload;
+    try{
+      const data=JSON.parse(payload.text);
+      if(!data||typeof data!=='object') return {ok:false,message:'Legacy shared plan payload was empty.'};
+      return {ok:true,data};
+    }catch(err){
+      return {ok:false,message:'Legacy shared plan could not be parsed.'};
+    }
+  }
   function encodePlanToShareText(data){
     const entries=[
       ['mode',data.planner?.plannerMode||'wake'],
@@ -625,16 +654,23 @@
       return false;
     }
     const code=params.get('plan');
-    if(!code) return false;
-    const parsed=decodeSharedPlan(code);
-    if(!parsed.ok){
-      showToast(parsed.message||'Unable to load shared plan from link.','error');
+    const legacy=params.get('planner');
+    let parsed;
+    if(code){
+      parsed=decodeSharedPlan(code);
+    } else if(legacy){
+      parsed=decodeLegacySharedPlan(legacy);
+    } else {
+      return false;
+    }
+    if(!parsed?.ok){
+      showToast(parsed?.message||'Unable to load shared plan from link.','error');
       return false;
     }
     const result=applyImportedPlan(parsed.data);
     if(result.ok){
       if(typeof window!=='undefined'&&window.history?.replaceState){
-        params.delete('plan');
+        params.delete('plan'); params.delete('planner');
         const query=params.toString();
         const newUrl=`${window.location.pathname}${query?`?${query}`:''}${window.location.hash||''}`;
         window.history.replaceState(null,'',newUrl);
