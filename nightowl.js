@@ -2361,10 +2361,10 @@
     persistState();
   }
 
-  function openShareDialog() {
+  async function openShareDialog() {
     if (!shareLayer) return;
     if (shareIncludeEventsToggle) shareIncludeEventsToggle.checked = !!state.shareIncludeEvents;
-    updateShareDialog();
+    await updateShareDialog();
     shareLayer.hidden = false;
     if (shareLinkInput) shareLinkInput.focus();
     if (!shareKeyListenerAttached) {
@@ -2381,11 +2381,17 @@
     }
   }
 
-  function handleShareCopyLink() {
+  async function handleShareCopyLink() {
+    if (shareLinkInput && !shareLinkInput.value) {
+      await updateShareDialog();
+    }
     if (shareLinkInput && shareLinkInput.value) copyText(shareLinkInput.value, 'Link copied');
   }
 
-  function handleShareCopyCode() {
+  async function handleShareCopyCode() {
+    if (!shareCode?.dataset.fullCode && !shareCode?.textContent) {
+      await updateShareDialog();
+    }
     const code = shareCode?.dataset.fullCode || shareCode?.textContent;
     if (code) copyText(code, 'Code copied');
   }
