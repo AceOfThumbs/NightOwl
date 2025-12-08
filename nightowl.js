@@ -2351,12 +2351,22 @@
   async function updateShareDialog() {
     if (!shareLayer) return;
     state.shareIncludeEvents = Boolean(shareIncludeEventsToggle?.checked);
-    const { code, url } = await generateShareLink(state.shareIncludeEvents);
-    if (shareLinkInput) shareLinkInput.value = url;
-    if (shareCode) {
-      shareCode.textContent = formatShareCodePreview(code);
-      shareCode.dataset.fullCode = code;
-      shareCode.setAttribute('title', code);
+    try {
+      const { code, url } = await generateShareLink(state.shareIncludeEvents);
+      if (shareLinkInput) shareLinkInput.value = url;
+      if (shareCode) {
+        shareCode.textContent = formatShareCodePreview(code);
+        shareCode.dataset.fullCode = code;
+        shareCode.setAttribute('title', code);
+      }
+    } catch (err) {
+      console.warn('Failed to update share dialog', err);
+      if (shareLinkInput) shareLinkInput.value = '';
+      if (shareCode) {
+        shareCode.textContent = 'Unable to generate share code.';
+        shareCode.removeAttribute('data-full-code');
+        shareCode.removeAttribute('title');
+      }
     }
     persistState();
   }
@@ -2364,8 +2374,12 @@
   async function openShareDialog() {
     if (!shareLayer) return;
     if (shareIncludeEventsToggle) shareIncludeEventsToggle.checked = !!state.shareIncludeEvents;
-    await updateShareDialog();
     shareLayer.hidden = false;
+    try {
+      await updateShareDialog();
+    } catch (err) {
+      console.warn('Share dialog failed to open', err);
+    }
     if (shareLinkInput) shareLinkInput.focus();
     if (!shareKeyListenerAttached) {
       document.addEventListener('keydown', handleShareKeydown);
