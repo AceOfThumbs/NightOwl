@@ -94,13 +94,13 @@
   ];
 
   const defaultEvents = () => [
-    createEvent('sleep', 'Sleep', toMinutes('23:00'), minutesDiff(toMinutes('23:00'), toMinutes('07:00'))),
-    createEvent('wake', 'Wake up', toMinutes('07:00'), 30),
-    createEvent('meal', 'Breakfast', toMinutes('08:00'), 30),
-    createEvent('work', 'Work', toMinutes('09:00'), minutesDiff(toMinutes('09:00'), toMinutes('17:00'))),
-    createEvent('meal', 'Lunch', toMinutes('12:00'), 45),
-    createEvent('exercise', 'Exercise', toMinutes('18:00'), 60),
-    createEvent('meal', 'Dinner', toMinutes('18:00'), 45)
+    createEvent('sleep', 'Sleep', toMinutes('23:00')),
+    createEvent('wake', 'Wake up', toMinutes('07:00')),
+    createEvent('meal', 'Breakfast', toMinutes('08:00')),
+    createEvent('work', 'Work', toMinutes('09:00')),
+    createEvent('meal', 'Lunch', toMinutes('12:00')),
+    createEvent('exercise', 'Exercise', toMinutes('18:00')),
+    createEvent('meal', 'Dinner', toMinutes('18:00'))
   ];
 
   function countEventsByType(type) {
@@ -110,13 +110,12 @@
   function ensureAnchorEvents() {
     let added = false;
     if (!state.events.some((evt) => evt.type === 'wake')) {
-      state.events.push(createEvent('wake', 'Wake', toMinutes('07:00'), eventTypes.wake.defaultDuration));
+      state.events.push(createEvent('wake', 'Wake', toMinutes('07:00')));
       added = true;
     }
     if (!state.events.some((evt) => evt.type === 'sleep')) {
       const start = toMinutes('23:00');
-      const end = toMinutes('07:00');
-      state.events.push(createEvent('sleep', 'Sleep', start, minutesDiff(start, end)));
+      state.events.push(createEvent('sleep', 'Sleep', start));
       added = true;
     }
     return added;
@@ -286,19 +285,16 @@
     return `${pad(hours24)}:${minutes}`;
   }
 
-  function minutesDiff(start, end) {
-    let diff = ((end - start) % MINUTES_IN_DAY + MINUTES_IN_DAY) % MINUTES_IN_DAY;
-    if (diff === 0) diff = MINUTES_IN_DAY;
-    return diff;
-  }
-
-  function createEvent(type, title, startMin, duration) {
-    const id = typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+  function generateEventId() {
+    return typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
       ? crypto.randomUUID()
       : `evt-${Math.random().toString(36).slice(2, 10)}`;
-    const eventDuration = typeof duration === 'number' ? duration : eventTypes[type]?.defaultDuration || 60;
+  }
+
+  function createEvent(type, title, startMin) {
+    const id = generateEventId();
     const start = ((startMin % MINUTES_IN_DAY) + MINUTES_IN_DAY) % MINUTES_IN_DAY;
-    return { id, type, title, startMin: start, endMin: (start + eventDuration) % MINUTES_IN_DAY, duration: eventDuration, repeat: 'daily' };
+    return { id, type, title, startMin: start };
   }
 
   function normalizeEvent(evt) {
@@ -306,12 +302,8 @@
     const type = eventTypes[evt.type] ? evt.type : 'custom';
     const title = evt.title || eventTypes[type]?.label || 'Event';
     const start = typeof evt.startMin === 'number' ? ((evt.startMin % MINUTES_IN_DAY) + MINUTES_IN_DAY) % MINUTES_IN_DAY : 0;
-    let duration = typeof evt.duration === 'number' ? evt.duration : null;
-    if (duration === null && typeof evt.endMin === 'number') {
-      duration = minutesDiff(start, evt.endMin);
-    }
-    if (duration === null) duration = eventTypes[type]?.defaultDuration || 60;
-    return { ...evt, type, title, startMin: start, duration, endMin: (start + duration) % MINUTES_IN_DAY };
+    const id = typeof evt.id === 'string' && evt.id ? evt.id : generateEventId();
+    return { id, type, title, startMin: start };
   }
 
   function loadState() {
@@ -608,16 +600,12 @@
   }
 
   function getSleepDuration() {
-    const sleepStart = getYourDaySleepMinutes();
-    const wakeStart = getYourDayWakeMinutes();
-    if (typeof sleepStart !== 'number' || typeof wakeStart !== 'number') {
-      return eventTypes.sleep.defaultDuration;
+    const { wake, sleep } = getAnchorEvents();
+    if (sleep && wake) {
+      const duration = normalizeDayMinutes(wake.startMin - sleep.startMin);
+      return duration || eventTypes.sleep.defaultDuration;
     }
-    let duration = Math.abs(sleepStart - wakeStart);
-    if (duration > MINUTES_IN_DAY / 2) {
-      duration = MINUTES_IN_DAY - duration;
-    }
-    return duration || eventTypes.sleep.defaultDuration;
+    return eventTypes.sleep.defaultDuration;
   }
 
   function feelsLikeMinutes(nowMinutes) {
@@ -831,8 +819,7 @@
     const shift = ((delta % MINUTES_IN_DAY) + MINUTES_IN_DAY) % MINUTES_IN_DAY;
     return {
       ...evt,
-      startMin: (evt.startMin + shift + MINUTES_IN_DAY) % MINUTES_IN_DAY,
-      endMin: (evt.endMin + shift + MINUTES_IN_DAY) % MINUTES_IN_DAY
+      startMin: (evt.startMin + shift + MINUTES_IN_DAY) % MINUTES_IN_DAY
     };
   }
 
@@ -916,10 +903,7 @@
 
   function updateEventTiming(evt, newStart) {
     const start = ((newStart % MINUTES_IN_DAY) + MINUTES_IN_DAY) % MINUTES_IN_DAY;
-    const duration = typeof evt.duration === 'number' ? evt.duration : eventTypes[evt.type]?.defaultDuration || 60;
     evt.startMin = start;
-    evt.duration = duration;
-    evt.endMin = (start + duration) % MINUTES_IN_DAY;
   }
 
   function shiftLinkedEvents(delta, anchorId) {
@@ -1276,7 +1260,7 @@
 
   function addEventFromTemplate(template, startMinutes) {
     const eventStart = typeof startMinutes === 'number' ? startMinutes : guessOpenMinute();
-    const event = createEvent(template.type, template.title, eventStart, template.duration);
+    const event = createEvent(template.type, template.title, eventStart);
     state.events.push(event);
     state.selectedId = event.id;
     persistState();
@@ -1303,7 +1287,7 @@
     if (!state.events.length) return toMinutes('09:00');
     const sorted = state.events.slice().sort((a, b) => a.startMin - b.startMin);
     const last = sorted[sorted.length - 1];
-    const duration = typeof last.duration === 'number' ? last.duration : eventTypes[last.type]?.defaultDuration || 60;
+    const duration = eventTypes[last.type]?.defaultDuration || 60;
     return (last.startMin + duration + 30) % MINUTES_IN_DAY;
   }
 
@@ -1959,7 +1943,7 @@
 
   function getExportDuration(evt) {
     if (evt.type === 'sleep') return getSleepDurationFromClock();
-    return MIN_EXPORT_DURATION;
+    return eventTypes[evt.type]?.defaultDuration || MIN_EXPORT_DURATION;
   }
 
   function buildExportEventsForDate(date, includeAllEvents = state.exportAllEvents, useYourDayBaseline = false) {
