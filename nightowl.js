@@ -1192,9 +1192,10 @@
       offset: offset
     };
     selectEvent(id);
-    document.addEventListener('pointermove', handlePointerMove);
+    document.addEventListener('pointermove', handlePointerMove, { passive: false });
     document.addEventListener('pointerup', handlePointerEnd);
     document.addEventListener('pointercancel', handlePointerEnd);
+    document.addEventListener('touchmove', preventDefaultTouch, { passive: false });
   }
 
   function handlePointerMove(evt) {
@@ -1263,11 +1264,16 @@
     document.removeEventListener('pointermove', handlePointerMove);
     document.removeEventListener('pointerup', handlePointerEnd);
     document.removeEventListener('pointercancel', handlePointerEnd);
+    document.removeEventListener('touchmove', preventDefaultTouch);
 
     const feedbackEl = $('dragFeedback');
     if (feedbackEl) feedbackEl.hidden = true;
 
     render();
+  }
+
+  function preventDefaultTouch(evt) {
+    evt.preventDefault();
   }
 
   function handleYourDayPointerStart(evt) {
@@ -1278,6 +1284,11 @@
     }
     yourDayPointerDrag = { active: true };
 
+    if (document.documentElement) {
+      document.documentElement.classList.add('no-scroll');
+      document.body?.classList.add('no-scroll');
+    }
+
     // Calculate initial offset: pointer - currentWake
     const pointerMinutes = getMinutesFromPointer(evt, yourDayRing);
     if (typeof pointerMinutes === 'number') {
@@ -1285,9 +1296,10 @@
       yourDayPointerDrag.offset = signedDelta(currentWake, pointerMinutes);
     }
 
-    document.addEventListener('pointermove', handleYourDayPointerMove);
+    document.addEventListener('pointermove', handleYourDayPointerMove, { passive: false });
     document.addEventListener('pointerup', handleYourDayPointerEnd);
     document.addEventListener('pointercancel', handleYourDayPointerEnd);
+    document.addEventListener('touchmove', preventDefaultTouch, { passive: false });
   }
 
   function handleYourDayPointerMove(evt) {
@@ -1325,10 +1337,15 @@
         /* ignore */
       }
     }
+    if (document.documentElement) {
+      document.documentElement.classList.remove('no-scroll');
+      document.body?.classList.remove('no-scroll');
+    }
     yourDayPointerDrag = null;
     document.removeEventListener('pointermove', handleYourDayPointerMove);
     document.removeEventListener('pointerup', handleYourDayPointerEnd);
     document.removeEventListener('pointercancel', handleYourDayPointerEnd);
+    document.removeEventListener('touchmove', preventDefaultTouch);
 
     const feedbackEl = $('yourDragFeedback');
     if (feedbackEl) feedbackEl.hidden = true;
@@ -2784,8 +2801,11 @@
         settingsBtn.setAttribute('aria-expanded', isHidden ? 'true' : 'false');
       });
 
-      // Close menu when clicking outside
-      document.addEventListener('mousedown', (e) => {
+      // Close menu when clicking/tapping outside
+      const closeSettingsOnOutsideClick = (e) => {
+        // Don't interfere if we're currently dragging
+        if (state.pointerDrag || yourDayPointerDrag) return;
+
         if (!settingsMenu.hidden &&
           !settingsMenu.contains(e.target) &&
           !settingsBtn.contains(e.target)) {
@@ -2794,7 +2814,10 @@
           closedByOutsideClick = true;
           setTimeout(() => { closedByOutsideClick = false; }, 200);
         }
-      });
+      };
+
+      document.addEventListener('pointerdown', closeSettingsOnOutsideClick);
+      document.addEventListener('touchstart', closeSettingsOnOutsideClick, { passive: true });
     }
 
     loadState();
