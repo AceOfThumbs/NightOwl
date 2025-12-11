@@ -27,6 +27,8 @@ html[data-theme="dark"] {
   --accent: #7aa2ff;
   --muted: rgba(122, 162, 255, 0.18);
   --ring: #9cc6ff;
+  /* Dark mode clock ring */
+  --clock-ring: rgba(255, 255, 255, 0.1);
   --success: #36d399;
   --warning: #ffbe3d;
   --danger: #ff6b6b;
@@ -50,6 +52,8 @@ html[data-theme="light"] {
   --accent: #7aa2ff;
   --muted: rgba(53, 89, 255, 0.12);
   --ring: #3559ff;
+  /* Light mode clock ring (darker) */
+  --clock-ring: rgba(20, 31, 61, 0.1);
   --success: #12a678;
   --warning: #e98600;
   --danger: #d24444;
@@ -91,23 +95,44 @@ textarea {
   width: 100%;
   max-width: none;
   margin: 0 auto;
-  padding: var(--space-6) var(--space-5);
+  padding: var(--space-4);
   display: flex;
   flex-direction: column;
   gap: var(--space-5);
 }
 
+@media (min-width: 768px) {
+  .app-shell {
+    padding: var(--space-6) var(--space-5);
+  }
+}
+
 .app-header {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
+  flex-direction: column;
   gap: var(--space-4);
+}
+
+@media (min-width: 1024px) {
+  .app-header {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+  }
+}
+
+.app-title {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-3);
+  flex-wrap: wrap;
 }
 
 .app-title h1 {
   margin: 0;
   font-weight: 700;
   font-size: clamp(1.75rem, 2.4vw, 2.4rem);
+  line-height: 1;
 }
 
 .text-muted {
@@ -116,9 +141,51 @@ textarea {
 }
 
 .header-actions {
+  position: relative;
   display: flex;
   align-items: center;
   gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.settings-menu {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  margin-top: var(--space-2);
+  background: var(--card);
+  border: 1px solid var(--muted);
+  border-radius: var(--radius-md);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+  padding: var(--space-4);
+  z-index: 1000;
+  min-width: 250px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.settings-menu[hidden] {
+  display: none;
+}
+
+.settings-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.settings-label {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text-2);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+#settingsBtn {
+  font-size: 1.2rem;
+  padding: var(--space-2);
 }
 
 .pill-group {
@@ -229,8 +296,8 @@ textarea {
 }
 
 .layout {
-  display: grid;
-  grid-template-columns: minmax(460px, 1.3fr) repeat(2, minmax(360px, 1fr));
+  display: flex;
+  flex-direction: column;
   gap: var(--space-5);
   max-width: 1680px;
   margin: 0 auto;
@@ -273,26 +340,29 @@ textarea {
   font-size: clamp(1.2rem, 2vw, 1.6rem);
 }
 
-.panel-clock {
-  grid-column: 1;
-}
 
-.panel-day {
-  grid-column: 2;
-}
 
-.panel-nudge {
-  grid-column: 3;
-}
 
 .panel-tabs {
   gap: var(--space-5);
-  grid-column: 1 / span 2;
   align-self: start;
+  width: 100%;
 }
 
 .panel-head--tabs {
   justify-content: flex-start;
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  background: var(--card);
+  padding-bottom: var(--space-3);
+  margin-bottom: var(--space-2);
+  border-bottom: 1px solid transparent;
+  transition: border-color 150ms ease;
+}
+
+.panel-head--tabs.is-stuck {
+  border-bottom-color: var(--muted);
 }
 
 .tab-list {
@@ -343,7 +413,7 @@ textarea {
 
 @media (min-width: 1100px) {
   .tab-panel {
-    grid-template-columns: minmax(520px, 1.05fr) minmax(380px, 1fr);
+    grid-template-columns: minmax(400px, 1.05fr) minmax(320px, 1fr);
   }
 
   .tab-panel .panel-clock {
@@ -352,6 +422,10 @@ textarea {
 
   .tab-panel .panel-day {
     grid-column: 2;
+  }
+
+  .tab-panel .panel-nudge {
+    grid-column: 1 / -1;
   }
 }
 
@@ -388,7 +462,8 @@ textarea {
   pointer-events: none;
 }
 
-.next-event {
+.next-event,
+.drag-feedback {
   position: absolute;
   background: var(--card-alt);
   color: var(--text-1);
@@ -401,6 +476,14 @@ textarea {
   box-shadow: 0 12px 24px rgba(0, 0, 0, 0.2);
   pointer-events: none;
   text-align: center;
+  z-index: 10;
+}
+
+.drag-feedback {
+  background: var(--accent);
+  color: #050810;
+  font-weight: 700;
+  border-color: transparent;
 }
 
 .ring-tooltip {
@@ -433,7 +516,8 @@ textarea {
 }
 
 .legend-day {
-  background: var(--accent);
+  background: var(--wake);
+  border: 1px solid var(--muted);
 }
 
 .legend-night {
@@ -546,6 +630,11 @@ textarea {
   transition: border-color 150ms ease, transform 150ms ease;
 }
 
+/* Standard Day Items Grid */
+.day-item:not(.day-list--readonly .day-item) {
+  grid-template-columns: auto 1fr auto auto;
+}
+
 .day-item[data-selected="true"] {
   border-color: var(--accent);
   box-shadow: 0 0 0 3px rgba(122, 162, 255, 0.2);
@@ -556,7 +645,71 @@ textarea {
 }
 
 .day-item__icon {
-  font-size: 1.3rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.5rem;
+}
+
+/* Specific layout for Your Day items (readonly) */
+.day-list--readonly .day-item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding-right: var(--space-4);
+  min-height: 56px;
+  cursor: default;
+  opacity: 0.9;
+}
+
+/* Center element: Feels Like */
+.day-item__feels-center {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  text-align: center;
+  white-space: nowrap;
+  pointer-events: none;
+  /* Let clicks pass if needed */
+}
+
+/* Right element: Real Time */
+.day-item__real-right {
+  margin-left: auto;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-1);
+  font-weight: 500;
+  font-size: 1rem;
+}
+
+.feels-like-text {
+  font-weight: 700;
+  color: var(--accent);
+}
+
+.feels-like-time {
+  font-weight: 700;
+  color: var(--accent);
+}
+
+html[data-theme="light"] .feels-like-time,
+html[data-theme="light"] .feels-like-text {
+  color: #3559ff;
+  /* Darker blue for light mode readability */
+}
+
+.day-item__feels-center .feels-like-text {
+  color: var(--accent);
+}
+
+html[data-theme="light"] .day-item__feels-center .feels-like-text {
+  color: #3559ff;
+}
+
+.clock-meta__feels .feels-like-text {
+  color: inherit;
 }
 
 .day-item__title {
@@ -573,7 +726,13 @@ textarea {
   font-weight: 600;
 }
 
-.day-item__time {
+.day-item__time-wrap {
+  display: flex;
+  align-items: center;
+  align-self: start;
+}
+
+.day-item__time-input {
   font-size: 0.95rem;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
@@ -582,48 +741,68 @@ textarea {
   border: 1px solid var(--muted);
   border-radius: var(--radius-sm);
   padding: var(--space-2) var(--space-3);
-  display: inline-flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: var(--space-1);
+  width: auto;
+  min-width: 120px;
   cursor: pointer;
-  min-width: 150px;
-  align-self: start;
-  transition: background 150ms ease, border-color 150ms ease, color 150ms ease;
+  transition: background 150ms ease, border-color 150ms ease, color 150ms ease, box-shadow 150ms ease;
+  font-family: inherit;
 }
 
-.day-item__time:hover,
-.day-item__time:focus-visible {
+.day-item__time-display {
+  grid-area: time;
+  width: 100%;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-3);
+  border-top: 1px solid rgba(255, 255, 255, 0.04);
+  padding-top: var(--space-2);
+  margin-top: var(--space-1);
+  align-items: center;
+}
+
+.day-item__time-real {
+  text-align: center;
+}
+
+.day-item__time-feels {
+  text-align: right;
+}
+
+.day-item__time-input:hover,
+.day-item__time-input:focus-visible {
   background: var(--muted);
   border-color: var(--accent);
   color: var(--text-1);
   outline: none;
 }
 
-.day-item__time[aria-expanded="true"] {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 2px rgba(122, 162, 255, 0.25);
-}
-
-.day-item__time-range {
-  font-size: 0.95rem;
-}
-
-.day-item__time-hint {
-  font-size: 0.7rem;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--text-3);
-}
-
-.day-item__time:focus-visible {
+.day-item__time-input:focus-visible {
   box-shadow: 0 0 0 2px rgba(122, 162, 255, 0.35);
+}
+
+.quick-add-select {
+  background: var(--card-alt);
+  color: var(--text-1);
+  border: 1px solid var(--muted);
+  border-radius: var(--radius-sm);
+  padding: var(--space-2) var(--space-4);
+  height: 44px;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.quick-add-select:focus-visible {
+  outline: none;
+  border-color: var(--accent);
 }
 
 .day-item__actions {
   display: inline-flex;
   gap: var(--space-2);
   align-self: start;
+  min-width: 44px;
+  /* Ensure space is reserved even if empty */
+  justify-content: flex-end;
 }
 
 .day-item button {
@@ -770,7 +949,7 @@ textarea {
 }
 
 .timezone-picker--compact .timezone-picker__controls {
-  grid-template-columns: repeat(2, minmax(140px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
   gap: var(--space-2);
   background: var(--card-alt);
   border: 1px solid var(--muted);
@@ -1150,35 +1329,30 @@ select {
   filter: drop-shadow(0 0 0 3px var(--ring));
 }
 
-.clock-daylight {
-  fill: none;
-  stroke: rgba(255, 255, 255, 0.08);
-  stroke-width: 52;
-}
-
-.clock-night {
-  fill: none;
-  stroke: rgba(0, 0, 0, 0.24);
-  stroke-width: 52;
-}
-
 .clock-sleep-window {
   fill: none;
-  stroke: var(--sleep);
+  stroke: rgba(0, 0, 0, 0.24);
   stroke-width: 28;
   stroke-linecap: round;
-  opacity: 0.7;
 }
 
 .clock-backdrop {
   fill: none;
-  stroke: rgba(255, 255, 255, 0.1);
-  stroke-width: 52;
+  stroke: var(--clock-ring);
+  stroke-width: 20;
+}
+
+.clock-backdrop-inner {
+  fill: none;
+  stroke: var(--clock-ring);
+  stroke-width: 1;
+  opacity: 0.6;
 }
 
 .clock-hour-tick {
-  stroke: rgba(255, 255, 255, 0.12);
+  stroke: var(--text-3);
   stroke-width: 2;
+  opacity: 0.3;
 }
 
 .clock-now-hand,
@@ -1188,12 +1362,13 @@ select {
 }
 
 .clock-hour-number {
-  fill: var(--text-3);
-  font-size: 0.75rem;
-  font-weight: 600;
+  fill: var(--text-2);
+  font-size: 1.1rem;
+  font-weight: 700;
   font-variant-numeric: tabular-nums;
   text-anchor: middle;
   pointer-events: none;
+  dominant-baseline: middle;
 }
 
 .clock-now-hand {
@@ -1220,12 +1395,15 @@ select {
   .layout {
     grid-template-columns: repeat(2, minmax(320px, 1fr));
   }
+
   .panel-clock {
     grid-column: 1 / -1;
   }
+
   .panel-day {
     grid-column: 1;
   }
+
   .panel-nudge {
     grid-column: 2;
   }
@@ -1235,6 +1413,7 @@ select {
   .layout {
     grid-template-columns: 1fr;
   }
+
   .panel-day,
   .panel-nudge,
   .panel-clock {
@@ -1244,35 +1423,132 @@ select {
 
 @media (max-width: 640px) {
   .app-shell {
-    padding: var(--space-5) var(--space-4);
+    padding: var(--space-4) var(--space-3);
   }
+
   .app-header {
     flex-direction: column;
     align-items: flex-start;
+    gap: var(--space-3);
   }
+
   .header-actions {
     align-self: stretch;
     justify-content: space-between;
     width: 100%;
+    flex-wrap: wrap;
+    gap: var(--space-2);
   }
+
+  /* Ensure controls stack nicely on very small screens */
+  .control-stack {
+    flex-grow: 1;
+    justify-content: center;
+  }
+
+  .pill-group {
+    flex-grow: 1;
+    justify-content: center;
+  }
+
   .list-controls,
   .nudge-actions {
     flex-direction: column;
+    align-items: stretch;
   }
-  .day-item {
-    grid-template-columns: auto 1fr;
-  }
-  .day-item__time {
-    grid-column: 1 / -1;
+
+  .nudge-actions .btn {
     width: 100%;
   }
+
+  .day-item {
+    grid-template-columns: auto 1fr;
+    grid-template-areas:
+      "icon title"
+      "time time"
+      "actions actions";
+    gap: var(--space-2);
+  }
+
+  .day-item__icon {
+    grid-area: icon;
+    align-self: center;
+  }
+
+  .day-item__title {
+    grid-area: title;
+    align-self: center;
+  }
+
+  .day-item__time-wrap {
+    grid-area: time;
+    width: 100%;
+    margin-top: var(--space-1);
+    justify-content: center;
+    align-items: center;
+    text-align: center;
+  }
+
+
+
+  /* Make the time input text centered on mobile for better balance */
+  .day-item__time-input {
+    width: 100%;
+    text-align: center;
+  }
+
   .day-item__actions {
-    grid-column: 2 / 3;
-    justify-self: end;
+    grid-area: actions;
+    justify-self: stretch;
+    display: flex;
+    justify-content: flex-end;
+    border-top: 1px solid rgba(255, 255, 255, 0.04);
+    padding-top: var(--space-2);
+    margin-top: var(--space-1);
+    width: 100%;
+  }
+
+  .day-item__actions .btn {
+    flex: 1;
+  }
+
+  .panel-actions {
+    margin-top: var(--space-2);
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .panel-head {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .panel-head--tabs {
+    flex-direction: row;
+    align-items: center;
+  }
+}
+
+@media (max-width: 380px) {
+
+  /* Extra tweaks for very small devices (iPhone SE, etc) */
+  :root {
+    --font-base: 14px;
+    /* Slightly smaller base font */
+  }
+
+  .app-title h1 {
+    font-size: 1.5rem;
+  }
+
+  .tab {
+    padding: var(--space-2) var(--space-3);
+    font-size: 0.9rem;
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
+
   *,
   *::before,
   *::after {
