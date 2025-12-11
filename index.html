@@ -1,285 +1,298 @@
 <!-- index.html -->
 <!DOCTYPE html>
 <html lang="en" data-theme="dark">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>NightOwl — UI rethink</title>
-    <link rel="stylesheet" href="nightowl.css" />
-  </head>
-  <body>
-    <div class="app-shell">
-      <header class="app-header">
-        <div class="app-title">
-          <h1>NightOwl</h1>
-          <p class="text-muted">Shift-aware clock and circadian planner</p>
-        </div>
-        <div class="header-actions">
-          <div class="pill-group" role="group" aria-label="Locale display">
-            <div id="displayTimeZonePicker" class="timezone-picker timezone-picker--compact" data-allow-local="true"></div>
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>NightOwl — UI rethink</title>
+  <link rel="stylesheet" href="nightowl.css" />
+</head>
+
+<body>
+  <div class="app-shell">
+    <header class="app-header">
+      <div class="app-title">
+        <h1>NightOwl</h1>
+        <p class="text-muted">Shift-aware clock and circadian planner</p>
+      </div>
+      <div class="header-actions">
+        <!-- Settings Toggle -->
+        <button id="settingsBtn" class="btn btn-ghost" type="button" aria-label="Settings" aria-expanded="false">
+          ⚙️
+        </button>
+        <!-- Settings Dropdown -->
+        <div id="settingsMenu" class="settings-menu" hidden>
+          <div class="settings-section">
+            <label class="settings-label">Time Zone</label>
+            <div id="displayTimeZonePicker" class="timezone-picker timezone-picker--compact" data-allow-local="true">
+            </div>
+          </div>
+
+          <div class="settings-section">
+            <label class="settings-label">Time Format</label>
             <button id="timeFormatToggle" class="pill" type="button"></button>
           </div>
-          <div class="control-stack" role="group" aria-label="Interface controls">
-            <button id="textScaleDown" class="btn btn-ghost" type="button" aria-label="Decrease text size">Aa−</button>
-            <button id="textScaleReset" class="btn btn-ghost" type="button" aria-label="Reset text size">⟲</button>
-            <button id="textScaleUp" class="btn btn-ghost" type="button" aria-label="Increase text size">Aa+</button>
-            <button id="themeLight" class="btn btn-ghost" type="button" data-theme-choice="light" aria-pressed="false" aria-label="Switch to light mode">☀️</button>
-            <button id="themeDark" class="btn btn-ghost" type="button" data-theme-choice="dark" aria-pressed="false" aria-label="Switch to dark mode">🌙</button>
-          </div>
-        </div>
-      </header>
 
-      <main class="layout">
-        <section class="panel panel-tabs" aria-label="Your Day views">
-          <header class="panel-head panel-head--tabs">
-            <div class="tab-list" role="tablist" aria-label="Clock view">
-              <button
-                id="tabYourDay"
-                class="tab tab-active"
-                type="button"
-                role="tab"
-                aria-selected="true"
-                aria-controls="yourDayTab"
-                data-tab="your"
-              >
-                Your Day
-              </button>
-              <button
-                id="tabStandardDay"
-                class="tab"
-                type="button"
-                role="tab"
-                aria-selected="false"
-                aria-controls="standardDayTab"
-                data-tab="standard"
-              >
-                Standard Day
-              </button>
-            </div>
-          </header>
-
-          <div class="tab-panels">
-            <div id="yourDayTab" class="tab-panel" role="tabpanel" aria-labelledby="tabYourDay">
-              <section class="panel panel-clock" aria-label="Your Day clock">
-                <div class="clock-meta" aria-live="polite">
-                  <span class="clock-meta__feels" id="yourFeelsLikeLabel"></span>
-                  <span class="clock-meta__now" id="yourNowLabel"></span>
-                </div>
-                <div class="clock-stage">
-                  <div class="day-ring" role="application" aria-label="Your Day clock">
-                    <svg id="yourDayRing" viewBox="0 0 400 400" aria-hidden="true"></svg>
-                    <div class="ring-overlay">
-                      <div class="next-event" id="yourNextEventLabel" hidden></div>
-                    </div>
-                  </div>
-                  <div class="micro-legend" aria-label="Legend">
-                    <span><span class="legend-dot legend-day"></span>☀️ day</span>
-                    <span><span class="legend-dot legend-night"></span>🌙 sleep</span>
-                    <span><span class="legend-dot legend-meal"></span>🍽️ meals</span>
-                    <span><span class="legend-dot legend-move"></span>🧘‍♀️ exercise</span>
-                    <span><span class="legend-dot legend-work"></span>💼 work</span>
-                  </div>
-                </div>
-              </section>
-
-              <section class="panel panel-day" aria-labelledby="realDayTitle">
-                <header class="panel-head">
-                  <div>
-                    <h3 id="realDayTitle">Your Day (Real Time)</h3>
-                    <p class="text-muted">Shift Standard Day to your chosen wake time.</p>
-                  </div>
-                  <div class="panel-actions">
-                    <label class="field field-inline">
-                      <span class="field-label">Wake time</span>
-                      <input id="yourDayWakeInput" type="time" />
-                    </label>
-                  </div>
-                </header>
-                <ul id="realDayList" class="day-list day-list--readonly" aria-live="polite"></ul>
-              </section>
-            </div>
-
-            <div id="standardDayTab" class="tab-panel" role="tabpanel" aria-labelledby="tabStandardDay" hidden>
-              <section class="panel panel-clock" aria-labelledby="clockTitle">
-                <header class="panel-head">
-                  <h3 id="clockTitle">Standard Day clock</h3>
-                  <div class="clock-meta" aria-live="polite">
-                    <span class="clock-meta__feels" id="feelsLikeLabel"></span>
-                    <span class="clock-meta__now" id="nowLabel"></span>
-                  </div>
-                </header>
-                <div class="clock-stage">
-                  <div class="day-ring" role="application" aria-label="24-hour planner clock">
-                    <svg id="dayRing" viewBox="0 0 400 400" aria-hidden="true"></svg>
-                    <div class="ring-overlay">
-                      <div class="next-event" id="nextEventLabel" hidden></div>
-                    </div>
-                  </div>
-                  <div class="micro-legend" aria-label="Legend">
-                    <span><span class="legend-dot legend-day"></span>☀️ day</span>
-                    <span><span class="legend-dot legend-night"></span>🌙 sleep</span>
-                    <span><span class="legend-dot legend-meal"></span>🍽️ meals</span>
-                    <span><span class="legend-dot legend-move"></span>🧘‍♀️ exercise</span>
-                    <span><span class="legend-dot legend-work"></span>💼 work</span>
-                  </div>
-                  <div class="filter-chips" role="group" aria-label="Filter event types">
-                    <button class="chip chip-active" data-filter="all">All</button>
-                    <button class="chip" data-filter="sleep">Sleep</button>
-                    <button class="chip" data-filter="meal">Meals</button>
-                    <button class="chip" data-filter="exercise">Exercise</button>
-                    <button class="chip" data-filter="work">Work</button>
-                  </div>
-                </div>
-              </section>
-
-              <section class="panel panel-day" aria-labelledby="dayListTitle">
-                <header class="panel-head panel-head--split">
-                  <div>
-                    <h3 id="dayListTitle">Standard Day</h3>
-                    <p class="text-muted">Define your reference schedule. Drag items on the clock or edit times below.</p>
-                  </div>
-                  <div class="panel-actions">
-                    <button id="resetStandardDay" class="btn btn-ghost" type="button">Reset</button>
-                  </div>
-                </header>
-                <div>
-                  <div class="list-controls">
-                    <label class="toggle">
-                      <input id="lockWakeToggle" type="checkbox" checked />
-                      <span class="toggle__label">Lock to Wake</span>
-                    </label>
-                    <button id="addDayItem" class="btn btn-primary" type="button">Add item</button>
-                  </div>
-                  <ul id="dayList" class="day-list" aria-live="polite"></ul>
-                </div>
-              </section>
+          <div class="settings-section">
+            <label class="settings-label">Text Size</label>
+            <div class="control-stack">
+              <button id="textScaleDown" class="btn btn-ghost" type="button"
+                aria-label="Decrease text size">Aa−</button>
+              <button id="textScaleReset" class="btn btn-ghost" type="button" aria-label="Reset text size">⟲</button>
+              <button id="textScaleUp" class="btn btn-ghost" type="button" aria-label="Increase text size">Aa+</button>
             </div>
           </div>
-        </section>
 
-        <section class="panel panel-nudge" aria-labelledby="nudgeTitle">
-          <header class="panel-head">
-            <h2 id="nudgeTitle">Nudge Planner</h2>
-            <div class="segment" role="radiogroup" aria-label="Nudge direction">
-              <button class="segment-btn" data-dir="auto" role="radio" aria-checked="true">Auto</button>
-              <button class="segment-btn" data-dir="earlier" role="radio" aria-checked="false">Earlier</button>
-              <button class="segment-btn" data-dir="later" role="radio" aria-checked="false">Later</button>
+          <div class="settings-section">
+            <label class="settings-label">Theme</label>
+            <div class="control-stack">
+              <button id="themeLight" class="btn btn-ghost" type="button" data-theme-choice="light" aria-pressed="false"
+                aria-label="Switch to light mode">☀️</button>
+              <button id="themeDark" class="btn btn-ghost" type="button" data-theme-choice="dark" aria-pressed="false"
+                aria-label="Switch to dark mode">🌙</button>
             </div>
-          </header>
-          <div class="nudge-controls">
-            <label class="field">
-              <span class="field-label">Target date</span>
-              <input id="targetDate" type="date" />
-            </label>
-            <label class="field">
-              <span class="field-label">Plan for</span>
-              <select id="plannerMode">
-                <option value="wake">Wake time</option>
-                <option value="sleep">Sleep time</option>
-              </select>
-            </label>
-            <div class="field curve-checkboxes" role="group" aria-label="Adjustment style">
-              <span class="field-label">Adjustment style</span>
-              <div class="curve-checkboxes__options">
-                <label class="checkbox">
-                  <input id="startSlowToggle" type="checkbox" />
-                  <span>Start Slow</span>
-                </label>
-                <label class="checkbox">
-                  <input id="endSlowToggle" type="checkbox" />
-                  <span>End Slow</span>
-                </label>
-              </div>
-            </div>
-            <div class="field">
-              <span class="field-label">Time zone</span>
-              <div id="plannerTimeZonePicker" class="timezone-picker" data-allow-local="true"></div>
-            </div>
-            <label class="field">
-              <span class="field-label">Target <span id="plannerModeLabel">wake</span> time</span>
-              <input id="targetTime" type="time" />
-            </label>
-            <label class="field field-slider">
-              <span class="field-label">Max shift per day <span id="dailyStepLabel">±30 min</span></span>
-              <input id="dailyStep" type="range" min="5" max="120" step="5" aria-describedby="dailyStepHint" />
-              <span id="dailyStepHint" class="text-muted">Max change per day applied to target wake/sleep.</span>
-            </label>
-          </div>
-          <div class="nudge-actions" role="group" aria-label="Planner actions">
-            <button id="loadPlanner" class="btn btn-secondary" type="button">Load</button>
-            <button id="savePlanner" class="btn btn-secondary" type="button">Save</button>
-            <button id="sharePlanner" class="btn btn-secondary" type="button">Share</button>
-            <div class="export-controls">
-              <label class="field">
-                <span class="field-label">Export period</span>
-                <select id="exportPeriod">
-                  <option value="today">Today</option>
-                  <option value="tomorrow">Tomorrow</option>
-                  <option value="this-week">This week</option>
-                  <option value="full-schedule">Full schedule</option>
-                </select>
-              </label>
-              <button id="exportWakeSleep" class="btn btn-secondary" type="button">Wake/Sleep to Calendar</button>
-              <button id="exportAllEventsCalendar" class="btn btn-secondary" type="button">Export All events to Calendar</button>
-            </div>
-          </div>
-          <div class="nudge-cards" id="nudgeCards" aria-live="polite"></div>
-        </section>
-      </main>
-
-      <section class="panel panel-advanced" aria-labelledby="advancedTitle">
-        <header class="panel-head advanced-toggle">
-          <button id="advancedToggle" class="btn btn-ghost" type="button" aria-expanded="false" aria-controls="advancedBody">Advanced</button>
-        </header>
-        <div id="advancedBody" class="advanced-body" hidden>
-          <p class="text-muted">Override the current date and time used for calculations.</p>
-          <div class="advanced-grid">
-            <label class="field">
-              <span class="field-label">Override “now”</span>
-              <input id="overrideInput" type="datetime-local" />
-            </label>
-            <div class="advanced-actions">
-              <button id="applyOverride" class="btn btn-secondary" type="button">Apply</button>
-              <button id="clearOverride" class="btn btn-ghost" type="button">Clear</button>
-            </div>
-          </div>
-          <div class="text-muted" id="overrideStatus">Using real current time.</div>
-        </div>
-      </section>
-
-      <div id="toastContainer" class="toast-container" role="status" aria-live="polite" aria-atomic="true"></div>
-
-      <div id="shareLayer" class="share-layer" hidden>
-        <div class="share-layer__backdrop" data-share-close></div>
-        <div class="share-dialog" role="dialog" aria-modal="true" aria-labelledby="shareDialogTitle">
-          <button type="button" class="share-dialog__close" data-share-close aria-label="Close share dialog">×</button>
-          <h2 id="shareDialogTitle">Share your plan</h2>
-          <p class="text-muted">Send this link to share your current schedule. Anyone with the link can load these settings.</p>
-          <label class="share-dialog__option">
-            <input id="shareIncludeEvents" type="checkbox" />
-            <div>
-              <div class="share-dialog__option-title">Include day events</div>
-              <div class="text-muted">Share your event timeline along with Nudge Planner settings.</div>
-            </div>
-          </label>
-          <label class="field">
-            <span class="field-label">Share link</span>
-            <input id="shareLinkInput" class="share-dialog__input" type="text" readonly />
-          </label>
-          <div class="share-dialog__buttons">
-            <button id="shareCopyLink" class="btn btn-primary" type="button">Copy link</button>
-            <button id="shareCopyCode" class="btn btn-secondary" type="button">Copy code</button>
-          </div>
-          <div>
-            <div class="field-label">Share code</div>
-            <div id="shareCode" class="share-code" aria-live="polite"></div>
           </div>
         </div>
       </div>
+    </header>
+
+    <main class="layout">
+      <section class="panel panel-tabs" aria-label="Your Day views">
+        <header class="panel-head panel-head--tabs">
+          <div class="tab-list" role="tablist" aria-label="Clock view">
+            <button id="tabYourDay" class="tab tab-active" type="button" role="tab" aria-selected="true"
+              aria-controls="yourDayTab" data-tab="your">
+              Your Day
+            </button>
+            <button id="tabStandardDay" class="tab" type="button" role="tab" aria-selected="false"
+              aria-controls="standardDayTab" data-tab="standard">
+              Standard Day
+            </button>
+            <button id="tabPlanner" class="tab" type="button" role="tab" aria-selected="false"
+              aria-controls="plannerTab" data-tab="planner">
+              Nudge Planner
+            </button>
+          </div>
+        </header>
+
+        <div class="tab-panels">
+          <div id="yourDayTab" class="tab-panel" role="tabpanel" aria-labelledby="tabYourDay">
+            <section class="panel panel-clock" aria-label="Your Day clock">
+              <div class="clock-meta" aria-live="polite">
+                <span class="clock-meta__feels" id="yourFeelsLikeLabel"></span>
+                <span class="clock-meta__now" id="yourNowLabel"></span>
+              </div>
+              <div class="clock-stage">
+                <div class="day-ring" role="application" aria-label="Your Day clock">
+                  <svg id="yourDayRing" viewBox="0 0 400 400" aria-hidden="true"></svg>
+                  <div class="ring-overlay">
+                    <div class="next-event" id="yourNextEventLabel" hidden></div>
+                    <div class="drag-feedback" id="yourDragFeedback" hidden></div>
+                  </div>
+                </div>
+
+              </div>
+            </section>
+
+            <section class="panel panel-day" aria-labelledby="realDayTitle">
+              <header class="panel-head">
+                <div>
+                  <h3 id="realDayTitle">Your Day (Real Time)</h3>
+                  <p class="text-muted">Shift Standard Day to your chosen wake time.</p>
+                </div>
+                <div class="panel-actions">
+                  <label class="field field-inline">
+                    <span class="field-label">Wake time</span>
+                    <input id="yourDayWakeInput" type="time" />
+                  </label>
+                </div>
+              </header>
+              <ul id="realDayList" class="day-list day-list--readonly" aria-live="polite"></ul>
+            </section>
+          </div>
+
+          <div id="standardDayTab" class="tab-panel" role="tabpanel" aria-labelledby="tabStandardDay" hidden>
+            <section class="panel panel-clock" aria-labelledby="clockTitle">
+              <header class="panel-head">
+                <h3 id="clockTitle">Standard Day clock</h3>
+                <div class="clock-meta" aria-live="polite">
+                  <span class="clock-meta__feels" id="feelsLikeLabel"></span>
+                  <span class="clock-meta__now" id="nowLabel"></span>
+                </div>
+              </header>
+              <div class="clock-stage">
+                <div class="day-ring" role="application" aria-label="24-hour planner clock">
+                  <svg id="dayRing" viewBox="0 0 400 400" aria-hidden="true"></svg>
+                  <div class="ring-overlay">
+                    <div class="next-event" id="nextEventLabel" hidden></div>
+                    <div class="drag-feedback" id="dragFeedback" hidden></div>
+                  </div>
+                </div>
+
+                <div class="filter-chips" role="group" aria-label="Filter event types">
+                  <button class="chip chip-active" data-filter="all">All</button>
+                  <button class="chip" data-filter="sleep">Sleep</button>
+                  <button class="chip" data-filter="meal">Meals</button>
+                  <button class="chip" data-filter="exercise">Exercise</button>
+                  <button class="chip" data-filter="work">Work</button>
+                </div>
+              </div>
+            </section>
+
+            <section class="panel panel-day" aria-labelledby="dayListTitle">
+              <header class="panel-head panel-head--split">
+                <div>
+                  <h3 id="dayListTitle">Standard Day</h3>
+                  <p class="text-muted">Define your reference schedule. Drag items on the clock or edit times below.</p>
+                </div>
+                <div class="panel-actions">
+                  <button id="resetStandardDay" class="btn btn-ghost" type="button">Reset</button>
+                </div>
+              </header>
+              <div>
+                <div class="list-controls">
+                  <label class="toggle">
+                    <input id="lockWakeToggle" type="checkbox" checked />
+                    <span class="toggle__label">Lock to Wake</span>
+                  </label>
+                  <button id="addDayItem" class="btn btn-primary" type="button">Add item</button>
+                </div>
+                <ul id="dayList" class="day-list" aria-live="polite"></ul>
+              </div>
+            </section>
+          </div>
+
+          <div id="plannerTab" class="tab-panel" role="tabpanel" aria-labelledby="tabPlanner" hidden>
+            <section class="panel panel-nudge" aria-labelledby="nudgeTitle">
+              <header class="panel-head">
+                <h2 id="nudgeTitle">Nudge Planner</h2>
+                <div class="segment" role="radiogroup" aria-label="Nudge direction">
+                  <button class="segment-btn" data-dir="auto" role="radio" aria-checked="true">Auto</button>
+                  <button class="segment-btn" data-dir="earlier" role="radio" aria-checked="false">Earlier</button>
+                  <button class="segment-btn" data-dir="later" role="radio" aria-checked="false">Later</button>
+                </div>
+              </header>
+              <div class="nudge-controls">
+                <label class="field">
+                  <span class="field-label">Target date</span>
+                  <input id="targetDate" type="date" />
+                </label>
+                <label class="field">
+                  <span class="field-label">Plan for</span>
+                  <select id="plannerMode">
+                    <option value="wake">Wake time</option>
+                    <option value="sleep">Sleep time</option>
+                  </select>
+                </label>
+                <div class="field curve-checkboxes" role="group" aria-label="Adjustment style">
+                  <span class="field-label">Adjustment style</span>
+                  <div class="curve-checkboxes__options">
+                    <label class="checkbox">
+                      <input id="startSlowToggle" type="checkbox" />
+                      <span>Start Slow</span>
+                    </label>
+                    <label class="checkbox">
+                      <input id="endSlowToggle" type="checkbox" />
+                      <span>End Slow</span>
+                    </label>
+                  </div>
+                </div>
+                <div class="field">
+                  <span class="field-label">Time zone</span>
+                  <div id="plannerTimeZonePicker" class="timezone-picker" data-allow-local="true"></div>
+                </div>
+                <label class="field">
+                  <span class="field-label">Target <span id="plannerModeLabel">wake</span> time</span>
+                  <input id="targetTime" type="time" />
+                </label>
+                <label class="field field-slider">
+                  <span class="field-label">Max shift per day <span id="dailyStepLabel">±30 min</span></span>
+                  <input id="dailyStep" type="range" min="5" max="120" step="5" aria-describedby="dailyStepHint" />
+                  <span id="dailyStepHint" class="text-muted">Max change per day applied to target wake/sleep.</span>
+                </label>
+              </div>
+              <div class="nudge-actions" role="group" aria-label="Planner actions">
+                <button id="loadPlanner" class="btn btn-secondary" type="button">Load</button>
+                <button id="savePlanner" class="btn btn-secondary" type="button">Save</button>
+                <button id="sharePlanner" class="btn btn-secondary" type="button">Share</button>
+                <div class="export-controls">
+                  <label class="field">
+                    <span class="field-label">Export period</span>
+                    <select id="exportPeriod">
+                      <option value="today">Today</option>
+                      <option value="tomorrow">Tomorrow</option>
+                      <option value="this-week">This week</option>
+                      <option value="full-schedule">Full schedule</option>
+                    </select>
+                  </label>
+                  <button id="exportWakeSleep" class="btn btn-secondary" type="button">Wake/Sleep to Calendar</button>
+                  <button id="exportAllEventsCalendar" class="btn btn-secondary" type="button">Export All events to
+                    Calendar</button>
+                </div>
+              </div>
+              <div class="nudge-cards" id="nudgeCards" aria-live="polite"></div>
+            </section>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <section class="panel panel-advanced" aria-labelledby="advancedTitle">
+      <header class="panel-head advanced-toggle">
+        <button id="advancedToggle" class="btn btn-ghost" type="button" aria-expanded="false"
+          aria-controls="advancedBody">Advanced</button>
+      </header>
+      <div id="advancedBody" class="advanced-body" hidden>
+        <p class="text-muted">Override the current date and time used for calculations.</p>
+        <div class="advanced-grid">
+          <label class="field">
+            <span class="field-label">Override “now”</span>
+            <input id="overrideInput" type="datetime-local" />
+          </label>
+          <div class="advanced-actions">
+            <button id="applyOverride" class="btn btn-secondary" type="button">Apply</button>
+            <button id="clearOverride" class="btn btn-ghost" type="button">Clear</button>
+          </div>
+        </div>
+        <div class="text-muted" id="overrideStatus">Using real current time.</div>
+      </div>
+    </section>
+
+    <div id="toastContainer" class="toast-container" role="status" aria-live="polite" aria-atomic="true"></div>
+
+    <div id="shareLayer" class="share-layer" hidden>
+      <div class="share-layer__backdrop" data-share-close></div>
+      <div class="share-dialog" role="dialog" aria-modal="true" aria-labelledby="shareDialogTitle">
+        <button type="button" class="share-dialog__close" data-share-close aria-label="Close share dialog">×</button>
+        <h2 id="shareDialogTitle">Share your plan</h2>
+        <p class="text-muted">Send this link to share your current schedule. Anyone with the link can load these
+          settings.</p>
+        <label class="share-dialog__option">
+          <input id="shareIncludeEvents" type="checkbox" />
+          <div>
+            <div class="share-dialog__option-title">Include day events</div>
+            <div class="text-muted">Share your event timeline along with Nudge Planner settings.</div>
+          </div>
+        </label>
+        <label class="field">
+          <span class="field-label">Share link</span>
+          <input id="shareLinkInput" class="share-dialog__input" type="text" readonly />
+        </label>
+        <div class="share-dialog__buttons">
+          <button id="shareCopyLink" class="btn btn-primary" type="button">Copy link</button>
+          <button id="shareCopyCode" class="btn btn-secondary" type="button">Copy code</button>
+        </div>
+        <div>
+          <div class="field-label">Share code</div>
+          <div id="shareCode" class="share-code" aria-live="polite"></div>
+        </div>
+      </div>
     </div>
+  </div>
 
-    <script src="timezones.js"></script>
-    <script src="nightowl.js"></script>
-  </body>
+  <script src="timezones.js"></script>
+  <script src="nightowl.js"></script>
+</body>
+
 </html>
-
