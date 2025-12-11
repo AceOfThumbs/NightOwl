@@ -4,11 +4,10 @@ NightOwl is a static circadian rhythm planner built with plain HTML, CSS, and Ja
 
 ## Features
 
-- Circular 24-hour clock with hour numerals for quick spatial orientation of your day.
+- Circular clock with hour numerals for quick spatial orientation of your day.
 - Drag-and-drop editing of schedule segments with desktop and touch support.
 - "Your Day" list view that mirrors the clock so you can fine-tune start and end times with accessible controls.
 - Light and dark themes that automatically adapt to the visitor's preference.
-- Ko-Fi support button rendered inline in the header so it stays visible without covering other content.
 
 ## Usage
 
