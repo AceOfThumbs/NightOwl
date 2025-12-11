@@ -719,6 +719,29 @@ html[data-theme="light"] .day-item__feels-center .feels-like-text {
   color: inherit;
 }
 
+/* Responsive layout for narrow screens */
+@media (max-width: 480px) {
+  .day-list--readonly .day-item {
+    flex-wrap: wrap;
+  }
+
+  .day-item__feels-center {
+    position: static;
+    transform: none;
+    left: auto;
+    margin-left: auto;
+    order: 3;
+    width: 100%;
+    text-align: right;
+    margin-top: calc(var(--space-1) * -1);
+    font-size: 0.9rem;
+  }
+
+  .day-item__real-right {
+    order: 2;
+  }
+}
+
 .day-item__title {
   display: flex;
   flex-direction: column;
