@@ -67,34 +67,35 @@
   const tabButtons = Array.from(document.querySelectorAll('[data-tab]'));
   const yourDayTabPanel = $('yourDayTab');
   const standardDayTabPanel = $('standardDayTab');
+  const plannerTabPanel = $('plannerTab');
   let shareKeyListenerAttached = false;
 
   const timeZoneCountries = (window.timeZoneData && window.timeZoneData.countries) || [];
   const timeZoneIndex = (window.timeZoneData && window.timeZoneData.zoneIndex) || new Map();
 
   const eventTypes = {
-    sleep: { icon: '🌙', label: 'Sleep', colorKey: 'sleep', defaultDuration: 8 * 60 },
-    wake: { icon: '☀️', label: 'Wake', colorKey: 'wake', defaultDuration: 30 },
-    meal: { icon: '🍽️', label: 'Meal', colorKey: 'meal', defaultDuration: 45 },
-    exercise: { icon: '🧘‍♀️', label: 'Exercise', colorKey: 'exercise', defaultDuration: 60 },
-    work: { icon: '💼', label: 'Work', colorKey: 'work', defaultDuration: 8 * 60 },
-    light: { icon: '💡', label: 'Bright light', colorKey: 'light', defaultDuration: 30 },
-    custom: { icon: '⭐', label: 'Custom', colorKey: 'wake', defaultDuration: 60 }
+    sleep: { icon: '🌙', label: 'Sleep', colorKey: 'sleep' },
+    wake: { icon: '☀️', label: 'Wake', colorKey: 'wake' },
+    meal: { icon: '🍽️', label: 'Meal', colorKey: 'meal' },
+    exercise: { icon: '🧘‍♀️', label: 'Exercise', colorKey: 'exercise' },
+    work: { icon: '💼', label: 'Work', colorKey: 'work' },
+    light: { icon: '💡', label: 'Bright light', colorKey: 'light' },
+    custom: { icon: '⭐', label: 'Custom', colorKey: 'wake' }
   };
 
   const quickAddTemplates = [
-    { type: 'wake', title: 'Wake', duration: 30 },
-    { type: 'meal', title: 'Breakfast', duration: 30 },
-    { type: 'work', title: 'Work', duration: 8 * 60 },
-    { type: 'meal', title: 'Lunch', duration: 60 },
-    { type: 'exercise', title: 'Exercise', duration: 60 },
-    { type: 'meal', title: 'Dinner', duration: 45 },
-    { type: 'custom', title: 'Note', duration: 30 },
-    { type: 'sleep', title: 'Sleep', duration: 8 * 60 }
+    { type: 'wake', title: 'Wake' },
+    { type: 'meal', title: 'Breakfast' },
+    { type: 'work', title: 'Work' },
+    { type: 'meal', title: 'Lunch' },
+    { type: 'exercise', title: 'Exercise' },
+    { type: 'meal', title: 'Dinner' },
+    { type: 'custom', title: 'Note' },
+    { type: 'sleep', title: 'Sleep' }
   ];
 
   const defaultEvents = () => [
-    createEvent('sleep', 'Sleep', toMinutes('23:00')),
+    createEvent('sleep', 'Sleep', toMinutes('22:00')),
     createEvent('wake', 'Wake up', toMinutes('07:00')),
     createEvent('meal', 'Breakfast', toMinutes('08:00')),
     createEvent('work', 'Work', toMinutes('09:00')),
@@ -115,6 +116,7 @@
     }
     if (!state.events.some((evt) => evt.type === 'sleep')) {
       const start = toMinutes('23:00');
+      const end = toMinutes('07:00');
       state.events.push(createEvent('sleep', 'Sleep', start));
       added = true;
     }
@@ -285,14 +287,16 @@
     return `${pad(hours24)}:${minutes}`;
   }
 
-  function generateEventId() {
-    return typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
-      ? crypto.randomUUID()
-      : `evt-${Math.random().toString(36).slice(2, 10)}`;
+  function minutesDiff(start, end) {
+    let diff = ((end - start) % MINUTES_IN_DAY + MINUTES_IN_DAY) % MINUTES_IN_DAY;
+    if (diff === 0) diff = MINUTES_IN_DAY;
+    return diff;
   }
 
   function createEvent(type, title, startMin) {
-    const id = generateEventId();
+    const id = typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+      ? crypto.randomUUID()
+      : `evt-${Math.random().toString(36).slice(2, 10)}`;
     const start = ((startMin % MINUTES_IN_DAY) + MINUTES_IN_DAY) % MINUTES_IN_DAY;
     return { id, type, title, startMin: start };
   }
@@ -302,8 +306,7 @@
     const type = eventTypes[evt.type] ? evt.type : 'custom';
     const title = evt.title || eventTypes[type]?.label || 'Event';
     const start = typeof evt.startMin === 'number' ? ((evt.startMin % MINUTES_IN_DAY) + MINUTES_IN_DAY) % MINUTES_IN_DAY : 0;
-    const id = typeof evt.id === 'string' && evt.id ? evt.id : generateEventId();
-    return { id, type, title, startMin: start };
+    return { ...evt, type, title, startMin: start };
   }
 
   function loadState() {
@@ -352,7 +355,7 @@
         state.yourDayWakeMinutes = normalizeDayMinutes(
           typeof prefs.yourDayWakeMinutes === 'number' ? prefs.yourDayWakeMinutes : state.yourDayWakeMinutes
         );
-        state.activeTab = prefs.activeTab === 'standard' ? 'standard' : 'your';
+        state.activeTab = ['standard', 'planner'].includes(prefs.activeTab) ? prefs.activeTab : 'your';
       }
     } catch (err) {
       console.warn('Failed to load prefs', err);
@@ -419,17 +422,17 @@
   }
 
   function angleFromMinutes(mins) {
-    return (mins / MINUTES_IN_DAY) * 360;
+    return ((mins % (MINUTES_IN_DAY / 2)) / (MINUTES_IN_DAY / 2)) * 360;
   }
 
   function formatHourTick(hour) {
     const hours24 = ((hour % 24) + 24) % 24;
-    if (state.timeFormat === '12h') {
-      const labelHour = hours24 % 12 || 12;
-      const suffix = hours24 < 12 ? 'am' : 'pm';
-      return `${labelHour}${suffix}`;
-    }
-    return pad(hours24);
+    return hours24 === 0 || hours24 === 12 || hours24 === 24 ? '12' : String(hours24 % 12);
+  }
+
+  function formatHourTick24(hour) {
+    const val = ((hour % 24) + 24) % 24;
+    return pad(val);
   }
 
   function describeArc(cx, cy, r, startAngle, endAngle) {
@@ -504,9 +507,18 @@
     return new Date(date.getTime() - diff);
   }
 
+  function getRadiusForTime(mins, maxRadius) {
+    const isPm = (mins % MINUTES_IN_DAY) >= (MINUTES_IN_DAY / 2);
+    // AM = outer, PM = inner
+    // Let's define the rings relative to maxRadius (which is ~150)
+    // Outer ring ~150, Inner ring ~100
+    return isPm ? maxRadius - 40 : maxRadius;
+  }
+
   function rotatePoint(mins, radius, center, offset = 0) {
-    const angle = ((mins / MINUTES_IN_DAY) * 360) - 90 + offset;
-    return polarToCartesian(center, center, radius, angle + 90);
+    const effRadius = getRadiusForTime(mins, radius);
+    const angle = angleFromMinutes(mins) - 90 + offset;
+    return polarToCartesian(center, center, effRadius, angle + 90);
   }
 
   function applyTheme(theme) {
@@ -588,8 +600,8 @@
   function getSleepAnchorStart() {
     const { wake, sleep } = getAnchorEvents();
     if (sleep) return sleep.startMin;
-    if (wake) return normalizeDayMinutes(wake.startMin - eventTypes.sleep.defaultDuration);
-    return toMinutes('23:00');
+    if (wake) return normalizeDayMinutes(wake.startMin - (9 * 60));
+    return toMinutes('22:00');
   }
 
   function getYourDaySleepMinutes() {
@@ -600,12 +612,16 @@
   }
 
   function getSleepDuration() {
-    const { wake, sleep } = getAnchorEvents();
-    if (sleep && wake) {
-      const duration = normalizeDayMinutes(wake.startMin - sleep.startMin);
-      return duration || eventTypes.sleep.defaultDuration;
+    const sleepStart = getYourDaySleepMinutes();
+    const wakeStart = getYourDayWakeMinutes();
+    if (typeof sleepStart !== 'number' || typeof wakeStart !== 'number') {
+      return 9 * 60;
     }
-    return eventTypes.sleep.defaultDuration;
+    let duration = Math.abs(sleepStart - wakeStart);
+    if (duration > MINUTES_IN_DAY / 2) {
+      duration = MINUTES_IN_DAY - duration;
+    }
+    return duration || (9 * 60);
   }
 
   function feelsLikeMinutes(nowMinutes) {
@@ -645,64 +661,198 @@
     const radius = 150;
     ring.setAttribute('viewBox', `0 0 ${size} ${size}`);
     while (ring.firstChild) ring.removeChild(ring.firstChild);
+
+    // Outer AM ring
     const backdrop = createSVG('circle', { cx: center, cy: center, r: radius, class: 'clock-backdrop' });
     ring.appendChild(backdrop);
+
+    // Inner PM ring (thin line)
+    const innerRadius = radius - 40;
+    const innerRing = createSVG('circle', { cx: center, cy: center, r: innerRadius, class: 'clock-backdrop-inner' });
+    ring.appendChild(innerRing);
+
     return { center, radius };
   }
 
-  function drawDaylight(ring, center, radius) {
-    const { sunrise, sunset } = calculateSunTimes(state.displayTimeZone);
-    if (sunrise === null || sunset === null || !ring) return;
-    const start = angleFromMinutes(sunrise);
-    const end = angleFromMinutes(sunset);
-    if (start === end) return;
-    const daylightGroup = createSVG('g');
-    const daylightArc = createSVG('path', {
-      d: describeArc(center, center, radius, start, end),
-      class: 'clock-daylight'
-    });
-    daylightGroup.appendChild(daylightArc);
-    const nightArc1 = createSVG('path', {
-      d: describeArc(center, center, radius, end, start + 360),
-      class: 'clock-night'
-    });
-    daylightGroup.appendChild(nightArc1);
-    ring.appendChild(daylightGroup);
+  function drawSegmentedArc(ring, center, outerRadius, startMin, endMin, className) {
+    const start = ((startMin % MINUTES_IN_DAY) + MINUTES_IN_DAY) % MINUTES_IN_DAY;
+    const end = ((endMin % MINUTES_IN_DAY) + MINUTES_IN_DAY) % MINUTES_IN_DAY;
+    const duration = start <= end ? end - start : (MINUTES_IN_DAY - start) + end;
+
+    // We break the duration into AM (0-720) and PM (720-1440) chunks
+    const innerRadius = outerRadius - 40;
+
+    // Simplest way: iterate through duration in chunks
+    // But specific AM/PM boundaries (720 and 0/1440) are important
+
+    let current = start;
+    let remaining = duration;
+
+    // Maximum 2 loops (24 hours)
+    let iter = 0;
+    while (remaining > 0 && iter < 4) {
+      iter++;
+      const currentRef = current % MINUTES_IN_DAY;
+      const isPm = currentRef >= 720;
+      const bound = isPm ? 1440 : 720;
+      const distToBound = bound - currentRef;
+      const step = Math.min(remaining, distToBound);
+
+      if (step <= 0) { // Should not happen if logic matches
+        current += 1; // force advance to avoid infinite
+        continue;
+      }
+
+      const segStartAngle = angleFromMinutes(currentRef);
+      const segEndAngle = angleFromMinutes(currentRef + step);
+
+      // If full circle (step = 720), angles might be same, need large arc
+      // handle full ring case if step == 720?
+      // angleFromMinutes returns 0-360
+
+      // Note: angleFromMinutes(x) and angleFromMinutes(x+720) are same.
+      // We just draw from segStartAngle to segEndAngle?
+      // Be careful with wrap around 360 in the visual 12-hour dial.
+      // e.g. 11:00 (330 deg) to 1:00 (30 deg).
+      // describeArc handles this IF endAngle > startAngle logic is correct or consistent.
+      // describeArc expects degrees.
+      // If step is small, endAngle > startAngle (modulo 360 logic needed?)
+
+      // Actually describeArc logic:
+      // const largeArcFlag = endAngle - startAngle <= 180 ? '0' : '1';
+      // It assumes straight mapping.
+
+      // Let's rely on angleFromMinutes returning linear degrees 0..360?
+      // No, modulo.
+      // We should calculate rotation amount.
+
+      const rotation = (step / 720) * 360;
+      const drawStart = segStartAngle;
+      const drawEnd = drawStart + rotation;
+
+      const r = isPm ? innerRadius : outerRadius;
+
+      // Adjust for "thickness" if needed, but for now single lines/arcs
+      if (Math.abs(drawEnd - drawStart) > 0.01) {
+        const arcPath = createSVG('path', {
+          d: describeArc(center, center, r, drawStart, drawEnd),
+          class: className
+        });
+        ring.appendChild(arcPath);
+      }
+
+      current += step;
+      remaining -= step;
+    }
   }
+
+
 
   function drawSleepWindowArc(ring, center, radius, window) {
     if (!window || !ring) return;
     const { start, duration } = window;
-    const startAngle = angleFromMinutes(start);
-    const endAngle = startAngle + (duration / MINUTES_IN_DAY) * 360;
-    const sleepArc = createSVG('path', {
-      d: describeArc(center, center, radius - 10, startAngle, endAngle),
-      class: 'clock-sleep-window'
-    });
-    ring.appendChild(sleepArc);
+    // sleep window is often slightly smaller radius or stroke
+    // modifying drawSegmentedArc to accept radius offset would be cleaner
+    // but here we can just pass r - 10 manually if we inline logic or adapt helper
+
+    // Let's duplicate logic for now or make helper better?
+    // Reuse drawSegmentedArc but with custom class which might handle stroke style
+    // But we need radius-10.
+
+    const startMin = start;
+    const endMin = start + duration;
+
+    let current = startMin;
+    let remaining = duration;
+    let iter = 0;
+    const outerRadius = radius;
+    const innerRadius = radius - 40;
+
+    while (remaining > 0 && iter < 4) {
+      iter++;
+      const currentRef = current % MINUTES_IN_DAY;
+      const isPm = currentRef >= 720;
+      const bound = isPm ? 1440 : 720;
+      const distToBound = bound - currentRef;
+      const step = Math.min(remaining, distToBound);
+
+      if (step <= 0) { current += 1; continue; }
+
+      const segStartAngle = angleFromMinutes(currentRef);
+      const rotation = (step / 720) * 360;
+      const drawStart = segStartAngle;
+      const drawEnd = drawStart + rotation;
+
+      const r = (isPm ? innerRadius : outerRadius) - 10;
+
+      if (Math.abs(drawEnd - drawStart) > 0.01) {
+        const sleepArc = createSVG('path', {
+          d: describeArc(center, center, r, drawStart, drawEnd),
+          class: 'clock-sleep-window'
+        });
+        ring.appendChild(sleepArc);
+      }
+
+      current += step;
+      remaining -= step;
+    }
   }
 
   function drawHourTicks(ring, center, radius) {
     if (!ring) return;
-    for (let h = 0; h < 24; h++) {
-      const angle = (h / 24) * 360;
+    const innerRadius = radius - 40;
+
+    // Draw 1-12 on outer ring
+    for (let h = 1; h <= 12; h++) {
+      const angle = (h / 12) * 360;
       const cos = Math.cos(((angle - 90) * Math.PI) / 180);
       const sin = Math.sin(((angle - 90) * Math.PI) / 180);
       const line = createSVG('line', {
-        x1: center + cos * (radius - 24),
-        y1: center + sin * (radius - 24),
-        x2: center + cos * (radius + 8),
-        y2: center + sin * (radius + 8),
+        x1: center + cos * (radius - 8),
+        y1: center + sin * (radius - 8),
+        x2: center + cos * radius,
+        y2: center + sin * radius,
         class: 'clock-hour-tick'
       });
       ring.appendChild(line);
       const label = createSVG('text', {
-        x: center + cos * (radius + 32),
-        y: center + sin * (radius + 32) + 4,
+        x: center + cos * (radius + 24),
+        y: center + sin * (radius + 24) + 4,
         class: 'clock-hour-number'
       });
-      label.textContent = formatHourTick(h);
+      label.textContent = String(h);
       ring.appendChild(label);
+    }
+
+    // If 24h mode, draw 13-24 (00) on inner ring
+    if (state.timeFormat === '24h') {
+      for (let h = 13; h <= 24; h++) {
+        const angle = (h / 12) * 360;
+        const cos = Math.cos(((angle - 90) * Math.PI) / 180);
+        const sin = Math.sin(((angle - 90) * Math.PI) / 180);
+
+        // Ticks for inner ring? Maybe small dots or just numbers
+        const line = createSVG('line', {
+          x1: center + cos * (innerRadius - 4),
+          y1: center + sin * (innerRadius - 4),
+          x2: center + cos * (innerRadius + 4),
+          y2: center + sin * (innerRadius + 4),
+          class: 'clock-hour-tick',
+          style: 'opacity: 0.5'
+        });
+        ring.appendChild(line);
+
+        const label = createSVG('text', {
+          x: center + cos * (innerRadius + 16),
+          y: center + sin * (innerRadius + 16) + 4,
+          class: 'clock-hour-number',
+          style: 'font-size: 0.75rem; fill: var(--text-3);'
+        });
+        // 24 maps to 00 sometimes, but user request "13-23" (and probably 0/24 implied)
+        // simplified: 13, 14, ... 23, 00
+        label.textContent = formatHourTick24(h);
+        ring.appendChild(label);
+      }
     }
   }
 
@@ -710,18 +860,20 @@
     const frame = prepareClock(dayRing);
     if (!frame) return;
     const { center, radius } = frame;
-    drawDaylight(dayRing, center, radius);
-    drawSleepWindowArc(dayRing, center, radius, getSleepWindow());
+    // drawSleepWindowArc(dayRing, center, radius, getSleepWindow());
     drawHourTicks(dayRing, center, radius);
 
     const now = getNowInZone(state.displayTimeZone);
     const nowMinutes = minutesInZone(now, state.displayTimeZone);
     const feelsMinutes = feelsLikeMinutes(nowMinutes);
+    const nowRadius = getRadiusForTime(nowMinutes, radius);
+    const feelsRadius = getRadiusForTime(feelsMinutes, radius);
+
     const feelsLikeHand = createSVG('line', {
       x1: center,
       y1: center,
-      x2: center + Math.cos(((angleFromMinutes(feelsMinutes) - 90) * Math.PI) / 180) * (radius + 10),
-      y2: center + Math.sin(((angleFromMinutes(feelsMinutes) - 90) * Math.PI) / 180) * (radius + 10),
+      x2: center + Math.cos(((angleFromMinutes(feelsMinutes) - 90) * Math.PI) / 180) * (feelsRadius + 10),
+      y2: center + Math.sin(((angleFromMinutes(feelsMinutes) - 90) * Math.PI) / 180) * (feelsRadius + 10),
       class: 'clock-feels-hand'
     });
     dayRing.appendChild(feelsLikeHand);
@@ -729,8 +881,8 @@
     const realTimeHand = createSVG('line', {
       x1: center,
       y1: center,
-      x2: center + Math.cos(((angleFromMinutes(nowMinutes) - 90) * Math.PI) / 180) * (radius - 32),
-      y2: center + Math.sin(((angleFromMinutes(nowMinutes) - 90) * Math.PI) / 180) * (radius - 32),
+      x2: center + Math.cos(((angleFromMinutes(nowMinutes) - 90) * Math.PI) / 180) * (nowRadius - 32),
+      y2: center + Math.sin(((angleFromMinutes(nowMinutes) - 90) * Math.PI) / 180) * (nowRadius - 32),
       class: 'clock-now-hand'
     });
     dayRing.appendChild(realTimeHand);
@@ -759,8 +911,8 @@
     const frame = prepareClock(yourDayRing);
     if (!frame) return;
     const { center, radius } = frame;
-    drawDaylight(yourDayRing, center, radius);
     const sleepWindow = getSleepWindow();
+    /*
     if (sleepWindow) {
       const shiftedStart = mapStandardToRealMinutes(sleepWindow.start);
       drawSleepWindowArc(yourDayRing, center, radius, {
@@ -768,16 +920,20 @@
         duration: sleepWindow.duration
       });
     }
+    */
     drawHourTicks(yourDayRing, center, radius);
 
     const now = getNowInZone(state.displayTimeZone);
     const nowMinutes = minutesInZone(now, state.displayTimeZone);
     const feelsMinutes = feelsLikeMinutes(nowMinutes);
+    const nowRadius = getRadiusForTime(nowMinutes, radius);
+    const feelsRadius = getRadiusForTime(feelsMinutes, radius);
+
     const feelsLikeHand = createSVG('line', {
       x1: center,
       y1: center,
-      x2: center + Math.cos(((angleFromMinutes(feelsMinutes) - 90) * Math.PI) / 180) * (radius + 10),
-      y2: center + Math.sin(((angleFromMinutes(feelsMinutes) - 90) * Math.PI) / 180) * (radius + 10),
+      x2: center + Math.cos(((angleFromMinutes(feelsMinutes) - 90) * Math.PI) / 180) * (feelsRadius + 10),
+      y2: center + Math.sin(((angleFromMinutes(feelsMinutes) - 90) * Math.PI) / 180) * (feelsRadius + 10),
       class: 'clock-feels-hand'
     });
     yourDayRing.appendChild(feelsLikeHand);
@@ -785,8 +941,8 @@
     const realTimeHand = createSVG('line', {
       x1: center,
       y1: center,
-      x2: center + Math.cos(((angleFromMinutes(nowMinutes) - 90) * Math.PI) / 180) * (radius - 32),
-      y2: center + Math.sin(((angleFromMinutes(nowMinutes) - 90) * Math.PI) / 180) * (radius - 32),
+      x2: center + Math.cos(((angleFromMinutes(nowMinutes) - 90) * Math.PI) / 180) * (nowRadius - 32),
+      y2: center + Math.sin(((angleFromMinutes(nowMinutes) - 90) * Math.PI) / 180) * (nowRadius - 32),
       class: 'clock-now-hand'
     });
     yourDayRing.appendChild(realTimeHand);
@@ -799,7 +955,7 @@
   }
 
   function updateClockLabels(nowMinutes, feelsMinutes, nowEl, feelsEl) {
-    if (feelsEl) feelsEl.textContent = `Feels like · ${formatMinutes(feelsMinutes)}`;
+    if (feelsEl) feelsEl.innerHTML = `<span class="feels-like-text">Feels like</span> · <span class="feels-like-time">${formatMinutes(feelsMinutes)}</span>`;
     if (nowEl) nowEl.textContent = `Real time · ${formatMinutes(nowMinutes)}`;
   }
 
@@ -825,25 +981,52 @@
 
   function drawEventDot(evt, center, radius) {
     const { x, y } = rotatePoint(evt.startMin, radius, center);
-    const dot = createSVG('circle', {
-      cx: x,
-      cy: y,
-      r: 10,
-      class: 'event-dot',
+    const meta = eventTypes[evt.type] || eventTypes.custom;
+
+    // Create a group to hold the hit target (invisible circle) and the visible icon
+    const group = createSVG('g', {
+      class: 'event-dot-group',
       'data-type': evt.type,
       'data-event-id': evt.id,
       'data-selected': state.selectedId === evt.id ? 'true' : 'false',
+      transform: `translate(${x}, ${y})`,
+      style: 'cursor: grab;'
+    });
+
+    // Hit target
+    const hitTarget = createSVG('circle', {
+      cx: 0,
+      cy: 0,
+      r: 16,
+      fill: 'transparent',
+      class: 'event-hit-target',
       tabindex: 0
     });
-    dot.addEventListener('pointerenter', () => handleArcHover(evt.id));
-    dot.addEventListener('pointerleave', () => handleArcHover(null));
-    dot.addEventListener('click', (event) => {
+
+    // Icon
+    const icon = createSVG('text', {
+      x: 0,
+      y: 0,
+      'dominant-baseline': 'central',
+      'text-anchor': 'middle',
+      'font-size': '1.2rem',
+      'pointer-events': 'none' // Let events pass to group/hitTarget
+    });
+    icon.textContent = meta.icon;
+
+    group.appendChild(hitTarget);
+    group.appendChild(icon);
+
+    hitTarget.addEventListener('pointerenter', () => handleArcHover(evt.id));
+    hitTarget.addEventListener('pointerleave', () => handleArcHover(null));
+    hitTarget.addEventListener('click', (event) => {
       event.stopPropagation();
       selectEvent(evt.id);
     });
-    dot.addEventListener('pointerdown', handlePointerStart);
-    dot.addEventListener('keydown', handleKeyboardNudge);
-    dayRing.appendChild(dot);
+    hitTarget.addEventListener('pointerdown', handlePointerStart);
+    hitTarget.addEventListener('keydown', handleKeyboardNudge);
+
+    dayRing.appendChild(group);
   }
 
   function renderYourDayMarkers(events, center, radius) {
@@ -858,41 +1041,65 @@
 
     markerStarts.forEach((group) => {
       if (!group.length) return;
-      const angle = (group[0].startMin / MINUTES_IN_DAY) * 2 * Math.PI;
-      const cos = Math.cos(angle - Math.PI / 2);
-      const sin = Math.sin(angle - Math.PI / 2);
-      const startRadius = radius - 22;
-      const endRadius = radius + 6;
-      const segmentLength = (endRadius - startRadius) / group.length;
+      // Draw icon for each event
+      group.forEach((evt) => {
+        const effectiveRadius = getRadiusForTime(evt.startMin, radius);
+        // Slightly offset if multiple events share same time/radius?
+        // For simplicity, just draw over (or could offset slightly)
+        // Ignoring stacking for now as per instructions "replace... with icons"
 
-      group.forEach((evt, idx) => {
-        const inner = startRadius + segmentLength * idx;
-        const outer = idx === group.length - 1 ? endRadius : startRadius + segmentLength * (idx + 1);
-        const marker = createSVG('line', {
-          x1: center + cos * inner,
-          y1: center + sin * inner,
-          x2: center + cos * outer,
-          y2: center + sin * outer,
-          class: 'your-day-marker',
-          'data-type': evt.type
+        const { x, y } = rotatePoint(evt.startMin, radius, center);
+        const meta = eventTypes[evt.type] || eventTypes.custom;
+
+        const icon = createSVG('text', {
+          x: x,
+          y: y,
+          'dominant-baseline': 'central',
+          'text-anchor': 'middle',
+          'font-size': '1.1rem',
+          class: 'your-day-marker-icon'
         });
-        yourDayRing.appendChild(marker);
+        icon.textContent = meta.icon;
+        yourDayRing.appendChild(icon);
       });
     });
 
     if (wake) {
       const { x, y } = rotatePoint(wake.startMin, radius, center);
-      const dot = createSVG('circle', {
-        cx: x,
-        cy: y,
-        r: 10,
-        class: 'your-day-wake-dot',
+      const meta = eventTypes.wake;
+
+      const group = createSVG('g', {
+        class: 'your-day-wake-group',
+        transform: `translate(${x}, ${y})`,
+        style: 'cursor: grab;'
+      });
+
+      const hitTarget = createSVG('circle', {
+        cx: 0,
+        cy: 0,
+        r: 16,
+        fill: 'transparent',
+        class: 'your-day-wake-hit',
         tabindex: 0,
         'aria-label': 'Adjust wake time'
       });
-      dot.addEventListener('pointerdown', handleYourDayPointerStart);
-      dot.addEventListener('keydown', handleYourDayKeyboardNudge);
-      yourDayRing.appendChild(dot);
+
+      const icon = createSVG('text', {
+        x: 0,
+        y: 0,
+        'dominant-baseline': 'central',
+        'text-anchor': 'middle',
+        'font-size': '1.4rem',
+        'pointer-events': 'none'
+      });
+      icon.textContent = meta.icon;
+
+      group.appendChild(hitTarget);
+      group.appendChild(icon);
+
+      hitTarget.addEventListener('pointerdown', handleYourDayPointerStart);
+      hitTarget.addEventListener('keydown', handleYourDayKeyboardNudge);
+      yourDayRing.appendChild(group);
     }
   }
 
@@ -972,8 +1179,18 @@
       document.documentElement.classList.add('no-scroll');
       document.body?.classList.add('no-scroll');
     }
-    const id = target.getAttribute('data-event-id');
-    state.pointerDrag = { id, lastStart: state.events.find((e) => e.id === id)?.startMin ?? null };
+
+    // Updated: find ID from the group (parent) since target is the hit-circle
+    const id = target.closest('.event-dot-group')?.getAttribute('data-event-id') || target.getAttribute('data-event-id');
+    const startMinutes = state.events.find((e) => e.id === id)?.startMin ?? 0;
+    const pointerMinutes = getMinutesFromPointer(evt);
+    const offset = signedDelta(startMinutes, pointerMinutes);
+
+    state.pointerDrag = {
+      id,
+      lastStart: startMinutes,
+      offset: offset
+    };
     selectEvent(id);
     document.addEventListener('pointermove', handlePointerMove);
     document.addEventListener('pointerup', handlePointerEnd);
@@ -983,15 +1200,43 @@
   function handlePointerMove(evt) {
     if (!state.pointerDrag) return;
     evt.preventDefault();
-    const { id } = state.pointerDrag;
+    const { id, offset } = state.pointerDrag;
     const event = state.events.find((e) => e.id === id);
     if (!event) return;
-    const minutes = snapMinutes(getMinutesFromPointer(evt), getSnapStep(evt));
+
+    const rawMinutes = getMinutesFromPointer(evt);
+    // Remove offset to get "intended" event start
+    // pointer = eventStart + offset  => eventStart = pointer - offset
+    // Using signed arithmetic with modulo
+    // target = (raw - offset)
+
+    // Actually, signedDelta(start, pointer) = offset
+    // so pointer - start = offset  => start = pointer - offset.
+    // We need standard modulo subtraction.
+
+    // But verify: offset was calculated as signedDelta(start, pointer).
+    // so if start=100, pointer=105, offset=5.
+    // Now user moves to pointer=110. target should be 105.
+    // 110 - 5 = 105. Correct.
+
+    let targetMin = (rawMinutes - (offset || 0) + MINUTES_IN_DAY) % MINUTES_IN_DAY;
+
+    const minutes = snapMinutes(targetMin, getSnapStep(evt));
     const delta = signedDelta(state.pointerDrag.lastStart ?? event.startMin, minutes);
+
     if (delta !== 0) {
       applyStartChange(event, minutes, delta);
       state.pointerDrag.lastStart = event.startMin;
     }
+
+    // Show feedback
+    const feedbackEl = $('dragFeedback');
+    if (feedbackEl) {
+      feedbackEl.hidden = false;
+      feedbackEl.textContent = formatMinutes(minutes);
+      positionDragLabel(feedbackEl, evt, dayRing);
+    }
+
     persistState();
     render();
   }
@@ -1018,6 +1263,10 @@
     document.removeEventListener('pointermove', handlePointerMove);
     document.removeEventListener('pointerup', handlePointerEnd);
     document.removeEventListener('pointercancel', handlePointerEnd);
+
+    const feedbackEl = $('dragFeedback');
+    if (feedbackEl) feedbackEl.hidden = true;
+
     render();
   }
 
@@ -1027,7 +1276,15 @@
     if (target?.setPointerCapture) {
       target.setPointerCapture(evt.pointerId);
     }
-    yourDayPointerDrag = true;
+    yourDayPointerDrag = { active: true };
+
+    // Calculate initial offset: pointer - currentWake
+    const pointerMinutes = getMinutesFromPointer(evt, yourDayRing);
+    if (typeof pointerMinutes === 'number') {
+      const currentWake = getYourDayWakeMinutes();
+      yourDayPointerDrag.offset = signedDelta(currentWake, pointerMinutes);
+    }
+
     document.addEventListener('pointermove', handleYourDayPointerMove);
     document.addEventListener('pointerup', handleYourDayPointerEnd);
     document.addEventListener('pointercancel', handleYourDayPointerEnd);
@@ -1036,9 +1293,23 @@
   function handleYourDayPointerMove(evt) {
     if (!yourDayPointerDrag) return;
     evt.preventDefault();
-    const minutes = getMinutesFromPointer(evt, yourDayRing);
-    if (typeof minutes !== 'number') return;
+    const rawMinutes = getMinutesFromPointer(evt, yourDayRing);
+    if (typeof rawMinutes !== 'number') return;
+
+    // Apply offset
+    const offset = yourDayPointerDrag.offset || 0;
+    const minutes = (rawMinutes - offset + MINUTES_IN_DAY) % MINUTES_IN_DAY;
+
     state.yourDayWakeMinutes = minutes;
+
+    // Show feedback
+    const feedbackEl = $('yourDragFeedback');
+    if (feedbackEl) {
+      feedbackEl.hidden = false;
+      feedbackEl.textContent = formatMinutes(minutes);
+      positionDragLabel(feedbackEl, evt, yourDayRing);
+    }
+
     persistState();
     render();
   }
@@ -1058,6 +1329,25 @@
     document.removeEventListener('pointermove', handleYourDayPointerMove);
     document.removeEventListener('pointerup', handleYourDayPointerEnd);
     document.removeEventListener('pointercancel', handleYourDayPointerEnd);
+
+    const feedbackEl = $('yourDragFeedback');
+    if (feedbackEl) feedbackEl.hidden = true;
+  }
+
+  function positionDragLabel(element, evt, ring) {
+    const rect = ring?.getBoundingClientRect();
+    if (!rect) return;
+
+    // Position near the cursor, but constrained within ring?
+    // Actually, just follow cursor with offset
+    const overlayRect = element.offsetParent?.getBoundingClientRect() || rect;
+
+    // We want it slightly above the finger/cursor
+    const x = evt.clientX;
+    const y = evt.clientY - 40;
+
+    element.style.left = `${x - overlayRect.left}px`;
+    element.style.top = `${y - overlayRect.top}px`;
   }
 
   function handleYourDayKeyboardNudge(evt) {
@@ -1120,80 +1410,82 @@
     }
 
     events.forEach((evt) => {
-        const li = document.createElement('li');
-        li.className = 'day-item';
-        li.dataset.id = evt.id;
-        if (evt.id === state.selectedId) {
-          li.dataset.selected = 'true';
-        }
-        const meta = eventTypes[evt.type] || eventTypes.custom;
-        const icon = document.createElement('div');
-        icon.className = 'day-item__icon';
-        icon.textContent = meta.icon;
+      const li = document.createElement('li');
+      li.className = 'day-item';
+      li.dataset.id = evt.id;
+      if (evt.id === state.selectedId) {
+        li.dataset.selected = 'true';
+      }
+      const meta = eventTypes[evt.type] || eventTypes.custom;
+      const icon = document.createElement('div');
+      icon.className = 'day-item__icon';
+      icon.textContent = meta.icon;
 
-        const titleWrap = document.createElement('div');
-        titleWrap.className = 'day-item__title';
-        const titleInput = document.createElement('input');
-        titleInput.type = 'text';
-        titleInput.value = evt.title;
-        titleInput.setAttribute('aria-label', 'Event title');
-        titleInput.addEventListener('change', () => {
-          evt.title = titleInput.value.trim() || evt.title;
-          persistState();
-          renderNextEventLabel();
-        });
-        titleWrap.appendChild(titleInput);
+      const titleWrap = document.createElement('div');
+      titleWrap.className = 'day-item__title';
+      const titleInput = document.createElement('input');
+      titleInput.type = 'text';
+      titleInput.value = evt.title;
+      titleInput.setAttribute('aria-label', 'Event title');
+      titleInput.addEventListener('change', () => {
+        evt.title = titleInput.value.trim() || evt.title;
+        persistState();
+        renderNextEventLabel();
+      });
+      titleWrap.appendChild(titleInput);
 
-        const timeButton = document.createElement('button');
-        timeButton.className = 'day-item__time';
-        timeButton.type = 'button';
-        timeButton.setAttribute('aria-label', `Edit time for ${evt.title}`);
-        const timeRange = document.createElement('span');
-        timeRange.className = 'day-item__time-range';
-        timeRange.textContent = minutesToLabel(evt.startMin);
-        const timeHint = document.createElement('span');
-        timeHint.className = 'day-item__time-hint';
-        timeHint.textContent = 'Edit start';
-        timeButton.appendChild(timeRange);
-        timeButton.appendChild(timeHint);
-        const isEditing = state.openEditorId === evt.id;
-        timeButton.setAttribute('aria-expanded', isEditing ? 'true' : 'false');
-        timeButton.addEventListener('click', () => toggleTimeEditor(evt.id));
+      const timeInputWrap = document.createElement('div');
+      timeInputWrap.className = 'day-item__time-wrap';
+      const timeInput = document.createElement('input');
+      timeInput.type = 'time';
+      timeInput.className = 'day-item__time-input';
+      timeInput.value = minutesToTime(evt.startMin);
+      timeInput.step = SNAP_DEFAULT * 60;
+      timeInput.setAttribute('aria-label', `Edit time for ${evt.title}`);
+      timeInput.addEventListener('change', () => {
+        const start = toMinutes(timeInput.value);
+        const delta = signedDelta(evt.startMin, start);
+        applyStartChange(evt, start, delta, { notifyLockShift: evt.type === 'wake' });
+        persistState();
+        render();
+      });
+      timeInputWrap.appendChild(timeInput);
 
-        const actions = document.createElement('div');
-        actions.className = 'day-item__actions';
-        const deleteBtn = document.createElement('button');
+      const actions = document.createElement('div');
+      actions.className = 'day-item__actions';
+
+      let deleteBtn = null;
+      if (evt.type !== 'wake' && evt.type !== 'sleep') {
+        deleteBtn = document.createElement('button');
         deleteBtn.className = 'btn btn-ghost';
         deleteBtn.type = 'button';
         deleteBtn.setAttribute('aria-label', 'Delete event');
         deleteBtn.textContent = '✕';
         deleteBtn.addEventListener('click', () => removeEvent(evt.id));
         actions.appendChild(deleteBtn);
+      }
 
-        li.appendChild(icon);
-        li.appendChild(titleWrap);
-        li.appendChild(timeButton);
-        li.appendChild(actions);
+      li.appendChild(icon);
+      li.appendChild(titleWrap);
+      li.appendChild(timeInputWrap);
+      li.appendChild(actions);
 
-        if (isEditing) {
-          li.appendChild(buildTimeEditor(evt));
+      li.addEventListener('click', (event) => {
+        const target = event.target;
+        if (
+          target === deleteBtn ||
+          target === titleInput ||
+          target === timeInput ||
+          target.closest?.('input') ||
+          target.closest?.('button')
+        ) {
+          return;
         }
-
-        li.addEventListener('click', (event) => {
-          const target = event.target;
-          if (
-            target === deleteBtn ||
-            target === titleInput ||
-            target === timeButton ||
-            target.closest?.('.time-editor')
-          ) {
-            return;
-          }
-          selectEvent(evt.id);
-        });
-
-        dayList.appendChild(li);
+        selectEvent(evt.id);
       });
+
+      dayList.appendChild(li);
+    });
   }
 
   function toggleTimeEditor(id) {
@@ -1287,7 +1579,7 @@
     if (!state.events.length) return toMinutes('09:00');
     const sorted = state.events.slice().sort((a, b) => a.startMin - b.startMin);
     const last = sorted[sorted.length - 1];
-    const duration = eventTypes[last.type]?.defaultDuration || 60;
+    const duration = 60;
     return (last.startMin + duration + 30) % MINUTES_IN_DAY;
   }
 
@@ -1336,7 +1628,7 @@
 
   function createTimeZonePicker(rootEl, options = {}) {
     if (!rootEl) return null;
-    const { allowLocal = true, value = 'local', onChange = () => {}, labels = {}, labelClass = '' } = options;
+    const { allowLocal = true, value = 'local', onChange = () => { }, labels = {}, labelClass = '' } = options;
     const localLabel = labels.local || 'Use local time';
     const countryLabel = labels.country || 'Country or region';
     const zoneLabel = labels.zone || 'Time zone';
@@ -1401,10 +1693,10 @@
       const country = timeZoneCountries.find((c) => c.code === countryCode);
       const zones = country
         ? country.zones
-            .slice()
-            .sort(
-              (a, b) => (a.offset || '').localeCompare(b.offset || '') || a.label.localeCompare(b.label)
-            )
+          .slice()
+          .sort(
+            (a, b) => (a.offset || '').localeCompare(b.offset || '') || a.label.localeCompare(b.label)
+          )
         : [];
       zoneSelect.disabled = !zones.length;
       zones.forEach((zone) => {
@@ -1538,76 +1830,27 @@
       title.textContent = evt.title;
       titleWrap.appendChild(title);
 
-      const timeButton = document.createElement('div');
-      timeButton.className = 'day-item__time';
-      const timeRange = document.createElement('span');
-      timeRange.className = 'day-item__time-range';
-      const realMinutes = evt.startMin;
-      timeRange.textContent = minutesToLabel(realMinutes);
-      const timeHint = document.createElement('span');
-      timeHint.className = 'day-item__time-hint';
+      // 3. Center: Feels Like
+      const feelsWrapper = document.createElement('div');
+      feelsWrapper.className = 'day-item__feels-center';
       const feelsStart = typeof evt.baseStart === 'number' ? evt.baseStart : evt.startMin;
-      timeHint.textContent = `Feels like ${minutesToLabel(feelsStart)}${wakeHint}`;
-      timeButton.appendChild(timeRange);
-      timeButton.appendChild(timeHint);
+      feelsWrapper.innerHTML = `<span class="feels-like-text">Feels like</span> <span class="feels-like-time">${minutesToLabel(feelsStart)}</span>${wakeHint}`;
+
+      // 4. Right: Real Time
+      const realWrapper = document.createElement('div');
+      realWrapper.className = 'day-item__real-right';
+      realWrapper.textContent = minutesToLabel(evt.startMin);
 
       li.appendChild(icon);
       li.appendChild(titleWrap);
-      li.appendChild(timeButton);
+      li.appendChild(feelsWrapper);
+      li.appendChild(realWrapper);
 
       realDayList.appendChild(li);
     });
   }
 
-  function calculateSunTimes(timeZone) {
-    const loc = getTimeZoneLocation(timeZone);
-    const now = getNowInZone(timeZone);
-    const date = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    const sun = solarSunriseSunset(date, loc.lat, loc.lon);
-    if (!sun) return { sunrise: null, sunset: null };
-    return sun;
-  }
 
-  function solarSunriseSunset(date, latitude, longitude) {
-    const rad = Math.PI / 180;
-    const J1970 = 2440588;
-    const J2000 = 2451545;
-    const dayMs = 1000 * 60 * 60 * 24;
-    const lw = -longitude * rad;
-    const phi = latitude * rad;
-    const toJulian = (date) => date.valueOf() / dayMs - 0.5 + J1970;
-    const fromJulian = (j) => new Date((j + 0.5 - J1970) * dayMs);
-    const solarMeanAnomaly = (d) => rad * (357.5291 + 0.98560028 * d);
-    const eclipticLongitude = (M) => {
-      const C = rad * (1.9148 * Math.sin(M) + 0.02 * Math.sin(2 * M) + 0.0003 * Math.sin(3 * M));
-      const P = rad * 102.9372;
-      return M + C + P + Math.PI;
-    };
-    const sunDeclination = (L) => Math.asin(Math.sin(L) * Math.sin(rad * 23.44));
-    const hourAngle = (h, phi, d) => Math.acos((Math.sin(h) - Math.sin(phi) * Math.sin(d)) / (Math.cos(phi) * Math.cos(d)));
-    const approxTransit = (ds, M, L) => J2000 + ds + 0.0053 * Math.sin(M) - 0.0069 * Math.sin(2 * L);
-
-    const d = toJulian(date) - J2000;
-    const J0 = 0.0009;
-    const n = Math.round(d - J0 - lw / (2 * Math.PI));
-    const ds = n + J0 + lw / (2 * Math.PI);
-    const M = solarMeanAnomaly(ds);
-    const L = eclipticLongitude(M);
-    const dec = sunDeclination(L);
-    const h0 = -0.83 * rad;
-    const w = hourAngle(h0, phi, dec);
-    let Jrise = approxTransit(ds, M, L) - w / (2 * Math.PI);
-    let Jset = approxTransit(ds, M, L) + w / (2 * Math.PI);
-    if (Number.isNaN(Jrise) || Number.isNaN(Jset)) return null;
-    // Ensure rise < set
-    if (Jset < Jrise) Jset += 1;
-    const sunriseDate = fromJulian(Jrise);
-    const sunsetDate = fromJulian(Jset);
-    const sunrise = minutesInZone(sunriseDate, state.displayTimeZone);
-    const sunset = minutesInZone(sunsetDate, state.displayTimeZone);
-    if (Number.isNaN(sunrise) || Number.isNaN(sunset)) return null;
-    return { sunrise, sunset };
-  }
 
   function easeLinear(t) {
     return t;
@@ -1827,6 +2070,7 @@
     select.className = 'quick-add-select';
     select.setAttribute('aria-label', 'Event type');
     quickAddTemplates.forEach((template, index) => {
+      if (template.type === 'wake' || template.type === 'sleep') return;
       const option = document.createElement('option');
       option.value = String(index);
       option.textContent = `${eventTypes[template.type]?.icon || '⭐'} ${template.title}`;
@@ -1938,12 +2182,12 @@
 
   function getSleepDurationFromClock() {
     const duration = getSleepDuration();
-    return typeof duration === 'number' ? duration : eventTypes.sleep.defaultDuration;
+    return typeof duration === 'number' ? duration : (9 * 60);
   }
 
   function getExportDuration(evt) {
     if (evt.type === 'sleep') return getSleepDurationFromClock();
-    return eventTypes[evt.type]?.defaultDuration || MIN_EXPORT_DURATION;
+    return MIN_EXPORT_DURATION;
   }
 
   function buildExportEventsForDate(date, includeAllEvents = state.exportAllEvents, useYourDayBaseline = false) {
@@ -2097,9 +2341,94 @@
     };
   }
 
+  const SHORT_TYPE_MAP = ['sleep', 'wake', 'meal', 'exercise', 'work', 'light', 'custom'];
+
+  function minifySnapshot(snapshot) {
+    const p = snapshot.planner || snapshot;
+    let flags = 0;
+    if (p.startSlow) flags |= 1;
+    if (p.endSlow) flags |= 2;
+    // p.lockToWake is meant to be here if we decide to sync it, but currently not synced.
+    // We reserve bit 4 (value 4) for lockToWake in future
+    if (p.timeFormat === '12h') flags |= 8;
+
+    const mode = p.plannerMode === 'sleep' ? 1 : 0;
+    const dirMap = { auto: 0, earlier: 1, later: 2 };
+    const direction = dirMap[p.plannerDirection] || 0;
+    const targetTimeMin = toMinutes(p.targetTime);
+
+    // Header: [v=2, flags, mode, direction, targetTimeMin, targetDate, dailyStep, plannerTZ, displayTZ]
+    const header = [
+      2,
+      flags,
+      mode,
+      direction,
+      targetTimeMin,
+      p.targetDate,
+      p.dailyStep,
+      p.timeZone || 'local',
+      p.displayTimeZone || 'local'
+    ];
+
+    let events = [];
+    if (Array.isArray(snapshot.events)) {
+      events = snapshot.events.map((evt) => {
+        // [typeIndex, startMin, title]
+        let typeIdx = SHORT_TYPE_MAP.indexOf(evt.type);
+        if (typeIdx === -1) typeIdx = 6; // custom
+
+        const defaultLabel = eventTypes[evt.type]?.label;
+        const isDefault = !evt.title || evt.title === defaultLabel;
+
+        // Use 0 for default title to save space (0 is falsy, unminify converts to undefined)
+        return [typeIdx, evt.startMin, isDefault ? 0 : evt.title];
+      });
+    }
+
+    return [header, events];
+  }
+
+  function unminifySnapshot(minified) {
+    if (!Array.isArray(minified) || minified.length < 2) return null;
+    const [header, minEvents] = minified;
+    const [version, flags, mode, direction, targetTimeMin, targetDate, dailyStep, plannerTZ, displayTZ] = header;
+
+    if (version !== 2) return null;
+
+    const planner = {
+      startSlow: !!(flags & 1),
+      endSlow: !!(flags & 2),
+      timeFormat: flags & 8 ? '12h' : '24h',
+      plannerMode: mode === 1 ? 'sleep' : 'wake',
+      plannerDirection: ['auto', 'earlier', 'later'][direction] || 'auto',
+      targetTime: minutesToTime(targetTimeMin),
+      targetDate: targetDate,
+      dailyStep: dailyStep,
+      timeZone: plannerTZ,
+      displayTimeZone: displayTZ
+    };
+
+    const events = [];
+    if (Array.isArray(minEvents)) {
+      minEvents.forEach((m) => {
+        const [typeIdx, startMin, title] = m;
+        const type = SHORT_TYPE_MAP[typeIdx] || 'custom';
+        events.push({
+          type,
+          startMin,
+          title: title || undefined
+        });
+      });
+    }
+
+    return { planner, events };
+  }
+
   function encodeSharePayload(includeEvents) {
     try {
-      const json = JSON.stringify(buildPlannerSnapshot(includeEvents));
+      const snapshot = buildPlannerSnapshot(includeEvents);
+      const minified = minifySnapshot(snapshot);
+      const json = JSON.stringify(minified);
       return btoa(encodeURIComponent(json));
     } catch (err) {
       console.warn('Failed to encode share payload', err);
@@ -2111,7 +2440,12 @@
     if (!payload) return null;
     try {
       const json = decodeURIComponent(atob(payload));
-      return JSON.parse(json);
+      const parsed = JSON.parse(json);
+      // We only support the new array format (v2)
+      if (Array.isArray(parsed) && Array.isArray(parsed[0]) && parsed[0][0] === 2) {
+        return unminifySnapshot(parsed);
+      }
+      return null;
     } catch (err) {
       console.warn('Failed to decode shared planner', err);
       return null;
@@ -2376,7 +2710,7 @@
   }
 
   function setActiveTab(tab) {
-    state.activeTab = tab === 'standard' ? 'standard' : 'your';
+    state.activeTab = ['standard', 'planner'].includes(tab) ? tab : 'your';
     tabButtons.forEach((btn) => {
       const isActive = btn.getAttribute('data-tab') === state.activeTab;
       btn.classList.toggle('tab-active', isActive);
@@ -2387,6 +2721,7 @@
     });
     if (yourDayTabPanel) yourDayTabPanel.hidden = state.activeTab !== 'your';
     if (standardDayTabPanel) standardDayTabPanel.hidden = state.activeTab !== 'standard';
+    if (plannerTabPanel) plannerTabPanel.hidden = state.activeTab !== 'planner';
     persistState();
   }
 
@@ -2432,6 +2767,36 @@
   }
 
   function init() {
+    // Settings Menu
+    const settingsBtn = $('settingsBtn');
+    const settingsMenu = $('settingsMenu');
+    if (settingsBtn && settingsMenu) {
+      let closedByOutsideClick = false;
+
+      settingsBtn.addEventListener('click', (e) => {
+        if (closedByOutsideClick) {
+          closedByOutsideClick = false;
+          return;
+        }
+
+        const isHidden = settingsMenu.hidden;
+        settingsMenu.hidden = !isHidden;
+        settingsBtn.setAttribute('aria-expanded', isHidden ? 'true' : 'false');
+      });
+
+      // Close menu when clicking outside
+      document.addEventListener('mousedown', (e) => {
+        if (!settingsMenu.hidden &&
+          !settingsMenu.contains(e.target) &&
+          !settingsBtn.contains(e.target)) {
+          settingsMenu.hidden = true;
+          settingsBtn.setAttribute('aria-expanded', 'false');
+          closedByOutsideClick = true;
+          setTimeout(() => { closedByOutsideClick = false; }, 200);
+        }
+      });
+    }
+
     loadState();
     loadSharedPlannerFromURL();
     applyTheme(state.theme);
