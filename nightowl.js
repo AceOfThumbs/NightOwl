@@ -101,7 +101,7 @@
     createEvent('work', 'Work', toMinutes('09:00')),
     createEvent('meal', 'Lunch', toMinutes('12:00')),
     createEvent('exercise', 'Exercise', toMinutes('18:00')),
-    createEvent('meal', 'Dinner', toMinutes('18:00'))
+    createEvent('meal', 'Dinner', toMinutes('19:00'))
   ];
 
   function countEventsByType(type) {
@@ -2850,3 +2850,4 @@
 
   document.addEventListener('DOMContentLoaded', init);
 })();
+
