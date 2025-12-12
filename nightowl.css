@@ -115,9 +115,11 @@ textarea {
 }
 
 .app-header {
+  position: relative;
   display: flex;
   flex-direction: column;
   gap: var(--space-4);
+  padding-right: var(--space-8);
 }
 
 @media (min-width: 1024px) {
@@ -148,11 +150,12 @@ textarea {
 }
 
 .header-actions {
-  position: relative;
+  position: absolute;
+  top: 0;
+  right: 0;
   display: flex;
   align-items: center;
   gap: var(--space-3);
-  flex-wrap: wrap;
 }
 
 .settings-menu {
@@ -506,12 +509,59 @@ textarea {
   pointer-events: none;
 }
 
+.event-dot-group text {
+  font-size: 1.35rem;
+}
+
+.your-day-marker-icon {
+  font-size: 1.25rem;
+  pointer-events: none;
+}
+
+.day-ring.is-dragging .event-dot-group text,
+.day-ring.is-dragging .your-day-marker-icon {
+  filter: drop-shadow(0 6px 10px rgba(0, 0, 0, 0.35));
+}
+
 .micro-legend {
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-3);
   color: var(--text-2);
   font-size: 0.85rem;
+}
+
+.clock-legend {
+  margin-top: var(--space-4);
+  padding: var(--space-3);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--muted);
+  background: var(--card);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.legend-note {
+  color: var(--text-2);
+  font-size: 0.9rem;
+}
+
+.legend-items {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+}
+
+.legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--text-1);
+}
+
+.legend-icon {
+  font-size: 1.1rem;
 }
 
 .legend-dot {
@@ -577,6 +627,23 @@ textarea {
   gap: var(--space-2);
   flex-wrap: wrap;
   align-items: center;
+}
+
+.profile-bar {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+}
+
+.profile-actions {
+  display: flex;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.profile-note {
+  margin: 0;
 }
 
 .toggle {
@@ -1278,7 +1345,11 @@ select {
   stroke-width: 10;
   fill: none;
   opacity: 0.9;
-  pointer-events: none;
+  pointer-events: auto;
+}
+
+.your-day-marker-icon {
+  fill: var(--text-1);
 }
 
 .your-day-marker[data-type="sleep"] {
@@ -1463,10 +1534,9 @@ select {
   }
 
   .header-actions {
-    align-self: stretch;
-    justify-content: space-between;
-    width: 100%;
-    flex-wrap: wrap;
+    position: absolute;
+    top: 0;
+    right: 0;
     gap: var(--space-2);
   }
 
