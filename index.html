@@ -19,7 +19,7 @@
       <div class="header-actions">
         <!-- Settings Toggle -->
         <button id="settingsBtn" class="btn btn-ghost" type="button" aria-label="Settings" aria-expanded="false">
-          ⚙️
+          ⋮
         </button>
         <!-- Settings Dropdown -->
         <div id="settingsMenu" class="settings-menu" hidden>
@@ -89,9 +89,23 @@
                   <div class="ring-overlay">
                     <div class="next-event" id="yourNextEventLabel" hidden></div>
                     <div class="drag-feedback" id="yourDragFeedback" hidden></div>
+                    <div class="ring-tooltip" id="yourClockTooltip" hidden></div>
                   </div>
                 </div>
 
+              </div>
+
+              <div class="clock-legend" aria-label="Clock legend">
+                <div class="legend-note">Inner ring = PM in 12-hour mode.</div>
+                <div class="legend-items">
+                  <span class="legend-item"><span class="legend-icon">☀️</span>Wake</span>
+                  <span class="legend-item"><span class="legend-icon">🌙</span>Sleep</span>
+                  <span class="legend-item"><span class="legend-icon">🍽️</span>Meals</span>
+                  <span class="legend-item"><span class="legend-icon">🧘‍♀️</span>Exercise</span>
+                  <span class="legend-item"><span class="legend-icon">💼</span>Work</span>
+                  <span class="legend-item"><span class="legend-icon">💡</span>Bright light</span>
+                  <span class="legend-item"><span class="legend-icon">⭐</span>Custom</span>
+                </div>
               </div>
             </section>
 
@@ -127,6 +141,7 @@
                   <div class="ring-overlay">
                     <div class="next-event" id="nextEventLabel" hidden></div>
                     <div class="drag-feedback" id="dragFeedback" hidden></div>
+                    <div class="ring-tooltip" id="clockTooltip" hidden></div>
                   </div>
                 </div>
 
@@ -151,6 +166,18 @@
                 </div>
               </header>
               <div>
+                <div class="profile-bar">
+                  <label class="field field-inline">
+                    <span class="field-label">Profile</span>
+                    <select id="profileSelect"></select>
+                  </label>
+                  <div class="profile-actions">
+                    <button id="saveProfileBtn" class="btn btn-ghost" type="button">Save</button>
+                    <button id="resetPresetsBtn" class="btn btn-ghost" type="button">Reset presets</button>
+                  </div>
+                  <p class="text-muted profile-note">Auto-switches to Weekday or Weekend based on feels-like time unless a custom profile is active.</p>
+                </div>
+
                 <div class="list-controls">
                   <label class="toggle">
                     <input id="lockWakeToggle" type="checkbox" checked />
@@ -159,6 +186,19 @@
                   <button id="addDayItem" class="btn btn-primary" type="button">Add item</button>
                 </div>
                 <ul id="dayList" class="day-list" aria-live="polite"></ul>
+              </div>
+
+              <div class="clock-legend" aria-label="Clock legend">
+                <div class="legend-note">Inner ring = PM in 12-hour mode.</div>
+                <div class="legend-items">
+                  <span class="legend-item"><span class="legend-icon">☀️</span>Wake</span>
+                  <span class="legend-item"><span class="legend-icon">🌙</span>Sleep</span>
+                  <span class="legend-item"><span class="legend-icon">🍽️</span>Meals</span>
+                  <span class="legend-item"><span class="legend-icon">🧘‍♀️</span>Exercise</span>
+                  <span class="legend-item"><span class="legend-icon">💼</span>Work</span>
+                  <span class="legend-item"><span class="legend-icon">💡</span>Bright light</span>
+                  <span class="legend-item"><span class="legend-icon">⭐</span>Custom</span>
+                </div>
               </div>
             </section>
           </div>

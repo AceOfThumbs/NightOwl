@@ -3,6 +3,7 @@
   const MINUTES_IN_DAY = 24 * 60;
   const STORAGE_KEY = 'nightowl.events.v2';
   const PREFS_KEY = 'nightowl.prefs.v2';
+  const PROFILES_KEY = 'nightowl.profiles.v1';
   const OVERRIDE_KEY = 'nightowl.override.v1';
   const SNAP_DEFAULT = 5;
   const SNAP_ALT = 1;
@@ -62,12 +63,17 @@
   const exportPeriodSelect = $('exportPeriod');
   const shareCloseEls = Array.from(document.querySelectorAll('[data-share-close]'));
   const resetStandardDayBtn = $('resetStandardDay');
+  const profileSelect = $('profileSelect');
+  const saveProfileBtn = $('saveProfileBtn');
+  const resetPresetsBtn = $('resetPresetsBtn');
   const realDayList = $('realDayList');
   const yourDayWakeInput = $('yourDayWakeInput');
   const tabButtons = Array.from(document.querySelectorAll('[data-tab]'));
   const yourDayTabPanel = $('yourDayTab');
   const standardDayTabPanel = $('standardDayTab');
   const plannerTabPanel = $('plannerTab');
+  const ringTooltip = $('clockTooltip');
+  const yourRingTooltip = $('yourClockTooltip');
   let shareKeyListenerAttached = false;
 
   const timeZoneCountries = (window.timeZoneData && window.timeZoneData.countries) || [];
@@ -94,15 +100,57 @@
     { type: 'sleep', title: 'Sleep' }
   ];
 
-  const defaultEvents = () => [
-    createEvent('sleep', 'Sleep', toMinutes('22:00')),
-    createEvent('wake', 'Wake up', toMinutes('07:00')),
+  const defaultWeekdayEvents = () => [
+    createEvent('wake', 'Wake', toMinutes('07:00')),
     createEvent('meal', 'Breakfast', toMinutes('08:00')),
     createEvent('work', 'Work', toMinutes('09:00')),
     createEvent('meal', 'Lunch', toMinutes('12:00')),
     createEvent('exercise', 'Exercise', toMinutes('18:00')),
-    createEvent('meal', 'Dinner', toMinutes('18:00'))
+    createEvent('meal', 'Dinner', toMinutes('19:00')),
+    createEvent('sleep', 'Sleep', toMinutes('22:00'))
   ];
+
+  const defaultWeekendEvents = () => [
+    createEvent('wake', 'Wake', toMinutes('09:00')),
+    createEvent('meal', 'Breakfast', toMinutes('10:00')),
+    createEvent('meal', 'Lunch', toMinutes('14:00')),
+    createEvent('exercise', 'Exercise', toMinutes('20:00')),
+    createEvent('meal', 'Dinner', toMinutes('21:00')),
+    createEvent('sleep', 'Sleep', toMinutes('00:00'))
+  ];
+
+  const defaultEvents = () => defaultWeekdayEvents();
+
+  function getWakeFromEvents(events) {
+    const wake = (events || []).find((evt) => evt.type === 'wake');
+    return typeof wake?.startMin === 'number' ? wake.startMin : toMinutes('07:00');
+  }
+
+  function createProfile(id, name, events, type = 'custom', wakeMinutes) {
+    const normalizedEvents = (events || []).map((evt) => normalizeEvent(evt)).filter(Boolean);
+    const standardWakeMinutes = normalizeDayMinutes(
+      typeof wakeMinutes === 'number' ? wakeMinutes : getWakeFromEvents(normalizedEvents)
+    );
+    return {
+      id,
+      name,
+      events: normalizedEvents,
+      type,
+      standardWakeMinutes
+    };
+  }
+
+  function cloneProfile(profile) {
+    if (!profile) return null;
+    return createProfile(profile.id, profile.name, profile.events, profile.type, profile.standardWakeMinutes);
+  }
+
+  function getDefaultProfiles() {
+    return {
+      weekday: createProfile('weekday', 'Weekday', defaultWeekdayEvents(), 'preset', toMinutes('07:00')),
+      weekend: createProfile('weekend', 'Weekend', defaultWeekendEvents(), 'preset', toMinutes('09:00'))
+    };
+  }
 
   function countEventsByType(type) {
     return state.events.filter((evt) => evt.type === type).length;
@@ -150,7 +198,9 @@
     yourDayWakeMinutes: toMinutes('07:00'),
     activeTab: 'your',
     exportPeriod: 'full-schedule',
-    exportAllEvents: false
+    exportAllEvents: false,
+    profiles: {},
+    activeProfileId: 'weekday'
   };
 
   let yourDayPointerDrag = null;
@@ -238,6 +288,13 @@
     return String(n).padStart(2, '0');
   }
 
+  function slugifyName(name) {
+    return name
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '') || 'profile';
+  }
+
   function addMinutes(date, minutes) {
     const next = new Date(date);
     next.setMinutes(next.getMinutes() + minutes);
@@ -309,6 +366,67 @@
     return { ...evt, type, title, startMin: start };
   }
 
+  function persistProfiles() {
+    localStorage.setItem(
+      PROFILES_KEY,
+      JSON.stringify({ profiles: state.profiles, activeProfileId: state.activeProfileId })
+    );
+  }
+
+  function ensurePresetProfiles(baseProfiles = {}) {
+    const defaults = getDefaultProfiles();
+    return {
+      ...defaults,
+      ...baseProfiles,
+      weekday: baseProfiles.weekday || defaults.weekday,
+      weekend: baseProfiles.weekend || defaults.weekend
+    };
+  }
+
+  function loadProfiles() {
+    let storedProfiles = null;
+    try {
+      storedProfiles = JSON.parse(localStorage.getItem(PROFILES_KEY) || 'null');
+    } catch (err) {
+      console.warn('Failed to load profiles', err);
+    }
+
+    let profiles = ensurePresetProfiles();
+    let activeProfileId = state.activeProfileId || 'weekday';
+
+    if (storedProfiles && typeof storedProfiles === 'object') {
+      profiles = Object.entries(storedProfiles.profiles || {}).reduce((acc, [id, profile]) => {
+        const normalized = createProfile(
+          id,
+          profile?.name || id,
+          profile?.events || [],
+          profile?.type || 'custom',
+          profile?.standardWakeMinutes
+        );
+        acc[id] = normalized;
+        return acc;
+      }, {});
+      profiles = ensurePresetProfiles(profiles);
+      activeProfileId = storedProfiles.activeProfileId && profiles[storedProfiles.activeProfileId]
+        ? storedProfiles.activeProfileId
+        : 'weekday';
+    } else {
+      profiles = ensurePresetProfiles();
+      if (state.events?.length) {
+        const imported = createProfile('custom-1', 'Custom', state.events, 'custom', state.standardWakeMinutes);
+        profiles[imported.id] = imported;
+        activeProfileId = imported.id;
+      } else {
+        const feelsWeekend = isFeelsLikeWeekend();
+        activeProfileId = feelsWeekend ? 'weekend' : 'weekday';
+      }
+    }
+
+    state.profiles = profiles;
+    state.activeProfileId = profiles[activeProfileId] ? activeProfileId : 'weekday';
+    applyProfile(state.activeProfileId, { skipPersist: true, skipRender: true });
+  }
+
   function loadState() {
     try {
       const stored = JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null');
@@ -356,6 +474,7 @@
           typeof prefs.yourDayWakeMinutes === 'number' ? prefs.yourDayWakeMinutes : state.yourDayWakeMinutes
         );
         state.activeTab = ['standard', 'planner'].includes(prefs.activeTab) ? prefs.activeTab : 'your';
+        state.activeProfileId = prefs.activeProfileId || state.activeProfileId;
       }
     } catch (err) {
       console.warn('Failed to load prefs', err);
@@ -372,7 +491,18 @@
       console.warn('Failed to load override', err);
     }
 
+    loadProfiles();
+
     if (ensureAnchorEvents()) {
+      const updated = createProfile(
+        state.activeProfileId,
+        state.profiles[state.activeProfileId]?.name || 'Custom',
+        state.events,
+        state.profiles[state.activeProfileId]?.type || 'custom',
+        state.standardWakeMinutes
+      );
+      state.profiles[state.activeProfileId] = updated;
+      persistProfiles();
       persistState();
     }
   }
@@ -399,7 +529,8 @@
         lockToWake: state.lockToWake,
         standardWakeMinutes: state.standardWakeMinutes,
         yourDayWakeMinutes: state.yourDayWakeMinutes,
-        activeTab: state.activeTab
+        activeTab: state.activeTab,
+        activeProfileId: state.activeProfileId
       })
     );
     if (state.overrideNow) {
@@ -630,6 +761,18 @@
     return normalizeDayMinutes(nowMinutes + standardWake - wakeStart);
   }
 
+  function getFeelsLikeDate() {
+    const now = getNowInZone(state.displayTimeZone);
+    const deltaMinutes = getStandardWakeMinutes() - getYourDayWakeMinutes();
+    return new Date(now.getTime() + deltaMinutes * 60 * 1000);
+  }
+
+  function isFeelsLikeWeekend() {
+    const feelsDate = getFeelsLikeDate();
+    const day = feelsDate.getDay();
+    return day === 0 || day === 6;
+  }
+
   function mapStandardToRealMinutes(mins) {
     const standardWake = getStandardWakeMinutes();
     const wakeStart = getYourDayWakeMinutes();
@@ -644,7 +787,44 @@
     return { start, end, duration };
   }
 
+  function applyProfile(profileId, options = {}) {
+    const profile = cloneProfile(state.profiles[profileId]);
+    if (!profile) return;
+
+    state.activeProfileId = profile.id;
+    state.events = profile.events.map((evt) => ({ ...evt }));
+    state.standardWakeMinutes = profile.standardWakeMinutes;
+    state.yourDayWakeMinutes = profile.standardWakeMinutes;
+    state.selectedId = null;
+    state.openEditorId = null;
+    refreshProfileSelect();
+
+    if (!options.skipPersist) {
+      persistProfiles();
+      persistState();
+    }
+
+    if (!options.skipRender) {
+      render();
+    }
+  }
+
+  function isCustomProfileActive() {
+    const active = state.profiles[state.activeProfileId];
+    return active?.type === 'custom';
+  }
+
+  function maybeAutoSelectPresetProfile() {
+    if (!state.profiles || !Object.keys(state.profiles).length) return;
+    if (isCustomProfileActive()) return;
+    const desired = isFeelsLikeWeekend() ? 'weekend' : 'weekday';
+    if (state.activeProfileId !== desired && state.profiles[desired]) {
+      applyProfile(desired, { skipRender: true });
+    }
+  }
+
   function render() {
+    maybeAutoSelectPresetProfile();
     renderStandardClock();
     renderYourDayClock();
     renderDayList();
@@ -857,6 +1037,7 @@
   }
 
   function renderStandardClock() {
+    hideEventTooltip(ringTooltip);
     const frame = prepareClock(dayRing);
     if (!frame) return;
     const { center, radius } = frame;
@@ -908,6 +1089,7 @@
   }
 
   function renderYourDayClock() {
+    hideEventTooltip(yourRingTooltip);
     const frame = prepareClock(yourDayRing);
     if (!frame) return;
     const { center, radius } = frame;
@@ -1009,7 +1191,7 @@
       y: 0,
       'dominant-baseline': 'central',
       'text-anchor': 'middle',
-      'font-size': '1.2rem',
+      'font-size': '1.35rem',
       'pointer-events': 'none' // Let events pass to group/hitTarget
     });
     icon.textContent = meta.icon;
@@ -1017,13 +1199,22 @@
     group.appendChild(hitTarget);
     group.appendChild(icon);
 
-    hitTarget.addEventListener('pointerenter', () => handleArcHover(evt.id));
-    hitTarget.addEventListener('pointerleave', () => handleArcHover(null));
+    hitTarget.addEventListener('pointerenter', () => {
+      handleArcHover(evt.id);
+      showEventTooltip(evt, ringTooltip, dayRing);
+    });
+    hitTarget.addEventListener('pointerleave', () => {
+      handleArcHover(null);
+      hideEventTooltip(ringTooltip);
+    });
     hitTarget.addEventListener('click', (event) => {
       event.stopPropagation();
       selectEvent(evt.id);
     });
-    hitTarget.addEventListener('pointerdown', handlePointerStart);
+    hitTarget.addEventListener('pointerdown', (e) => {
+      showEventTooltip(evt, ringTooltip, dayRing);
+      handlePointerStart(e);
+    });
     hitTarget.addEventListener('keydown', handleKeyboardNudge);
 
     dayRing.appendChild(group);
@@ -1043,24 +1234,32 @@
       if (!group.length) return;
       // Draw icon for each event
       group.forEach((evt) => {
-        const effectiveRadius = getRadiusForTime(evt.startMin, radius);
-        // Slightly offset if multiple events share same time/radius?
-        // For simplicity, just draw over (or could offset slightly)
-        // Ignoring stacking for now as per instructions "replace... with icons"
-
         const { x, y } = rotatePoint(evt.startMin, radius, center);
         const meta = eventTypes[evt.type] || eventTypes.custom;
 
+        const wrapper = createSVG('g', {
+          transform: `translate(${x}, ${y})`,
+          class: 'your-day-marker'
+        });
+
+        const hitTarget = createSVG('circle', { cx: 0, cy: 0, r: 16, fill: 'transparent', class: 'event-hit-target' });
+        hitTarget.addEventListener('pointerenter', () => showEventTooltip(evt, yourRingTooltip, yourDayRing));
+        hitTarget.addEventListener('pointerleave', () => hideEventTooltip(yourRingTooltip));
+        hitTarget.addEventListener('click', () => showEventTooltip(evt, yourRingTooltip, yourDayRing));
+
         const icon = createSVG('text', {
-          x: x,
-          y: y,
+          x: 0,
+          y: 0,
           'dominant-baseline': 'central',
           'text-anchor': 'middle',
-          'font-size': '1.1rem',
+          'font-size': '1.25rem',
           class: 'your-day-marker-icon'
         });
         icon.textContent = meta.icon;
-        yourDayRing.appendChild(icon);
+
+        wrapper.appendChild(hitTarget);
+        wrapper.appendChild(icon);
+        yourDayRing.appendChild(wrapper);
       });
     });
 
@@ -1094,13 +1293,16 @@
       });
       icon.textContent = meta.icon;
 
-      group.appendChild(hitTarget);
-      group.appendChild(icon);
+        group.appendChild(hitTarget);
+        group.appendChild(icon);
 
-      hitTarget.addEventListener('pointerdown', handleYourDayPointerStart);
-      hitTarget.addEventListener('keydown', handleYourDayKeyboardNudge);
-      yourDayRing.appendChild(group);
-    }
+        hitTarget.addEventListener('pointerenter', () => showEventTooltip(wake, yourRingTooltip, yourDayRing));
+        hitTarget.addEventListener('pointerleave', () => hideEventTooltip(yourRingTooltip));
+        hitTarget.addEventListener('click', () => showEventTooltip(wake, yourRingTooltip, yourDayRing));
+        hitTarget.addEventListener('pointerdown', handleYourDayPointerStart);
+        hitTarget.addEventListener('keydown', handleYourDayKeyboardNudge);
+        yourDayRing.appendChild(group);
+      }
   }
 
   function signedDelta(from, to) {
@@ -1268,6 +1470,7 @@
 
     const feedbackEl = $('dragFeedback');
     if (feedbackEl) feedbackEl.hidden = true;
+    hideEventTooltip(ringTooltip);
 
     render();
   }
@@ -1349,6 +1552,7 @@
 
     const feedbackEl = $('yourDragFeedback');
     if (feedbackEl) feedbackEl.hidden = true;
+    hideEventTooltip(yourRingTooltip);
   }
 
   function positionDragLabel(element, evt, ring) {
@@ -1505,6 +1709,86 @@
     });
   }
 
+  function getSortedProfiles() {
+    const presets = ['weekday', 'weekend'];
+    const presetProfiles = presets
+      .map((id) => state.profiles[id])
+      .filter(Boolean);
+    const customProfiles = Object.values(state.profiles)
+      .filter((p) => !presets.includes(p.id))
+      .sort((a, b) => a.name.localeCompare(b.name));
+    return [...presetProfiles, ...customProfiles];
+  }
+
+  function refreshProfileSelect() {
+    if (!profileSelect) return;
+    profileSelect.innerHTML = '';
+    const profiles = getSortedProfiles();
+    profiles.forEach((profile) => {
+      const option = document.createElement('option');
+      option.value = profile.id;
+      option.textContent = profile.name;
+      option.dataset.type = profile.type;
+      profileSelect.appendChild(option);
+    });
+    const newOption = document.createElement('option');
+    newOption.value = '__new__';
+    newOption.textContent = 'Create new profile…';
+    profileSelect.appendChild(newOption);
+    profileSelect.value = state.activeProfileId;
+    if (profileSelect.value !== state.activeProfileId && profiles.length) {
+      profileSelect.value = profiles[0].id;
+    }
+  }
+
+  function saveActiveProfile(nameOverride) {
+    const current = state.profiles[state.activeProfileId] || createProfile(state.activeProfileId, 'Custom', [], 'custom');
+    const name = (nameOverride || current.name || 'Custom').trim();
+    if (!name) return;
+    const id = current.id || slugifyName(name);
+    const updated = createProfile(id, name, state.events, current.type || 'custom', state.standardWakeMinutes);
+    state.profiles[id] = updated;
+    state.activeProfileId = id;
+    persistProfiles();
+    persistState();
+    refreshProfileSelect();
+    showToast(`Saved ${name} profile`, 'success');
+  }
+
+  function handleCreateProfile() {
+    const name = prompt('Name this profile');
+    if (!name) {
+      refreshProfileSelect();
+      return;
+    }
+    const idBase = slugifyName(name);
+    let uniqueId = idBase;
+    let suffix = 2;
+    while (state.profiles[uniqueId]) {
+      uniqueId = `${idBase}-${suffix}`;
+      suffix += 1;
+    }
+    state.profiles[uniqueId] = createProfile(uniqueId, name, state.events, 'custom', state.standardWakeMinutes);
+    state.activeProfileId = uniqueId;
+    persistProfiles();
+    persistState();
+    refreshProfileSelect();
+    showToast(`Created ${name}`, 'success');
+  }
+
+  function resetPresetProfiles() {
+    const defaults = getDefaultProfiles();
+    state.profiles.weekday = defaults.weekday;
+    state.profiles.weekend = defaults.weekend;
+    persistProfiles();
+    if (['weekday', 'weekend'].includes(state.activeProfileId)) {
+      applyProfile(state.activeProfileId, { skipRender: false });
+    } else {
+      refreshProfileSelect();
+      showToast('Weekday and Weekend reset to defaults', 'info');
+    }
+  }
+
   function toggleTimeEditor(id) {
     state.openEditorId = state.openEditorId === id ? null : id;
     render();
@@ -1624,10 +1908,24 @@
     const rect = ring?.getBoundingClientRect();
     if (!rect) return;
     const overlayRect = element.offsetParent?.getBoundingClientRect() || rect;
-    const centerX = rect.left + rect.width / 2;
-    const centerY = rect.top + rect.height / 2;
-    element.style.left = `${centerX - overlayRect.left}px`;
-    element.style.top = `${centerY - overlayRect.top}px`;
+    const point = rotatePoint(evt.startMin, 150, 200);
+    const normX = (point.x / 400) * rect.width;
+    const normY = (point.y / 400) * rect.height;
+    const posX = rect.left + normX;
+    const posY = rect.top + normY;
+    element.style.left = `${posX - overlayRect.left}px`;
+    element.style.top = `${posY - overlayRect.top - 12}px`;
+  }
+
+  function showEventTooltip(evt, tooltipEl, ringEl) {
+    if (!tooltipEl || !ringEl) return;
+    tooltipEl.hidden = false;
+    tooltipEl.textContent = evt.title;
+    positionLabelForEvent(evt, tooltipEl, ringEl);
+  }
+
+  function hideEventTooltip(tooltipEl) {
+    if (tooltipEl) tooltipEl.hidden = true;
   }
 
   function showToast(message, variant = 'info', duration = 2600) {
@@ -2655,6 +2953,8 @@
 
   function initRingInteraction() {
     dayRing.addEventListener('pointerdown', handleRingPointerDown);
+    dayRing.addEventListener('pointerleave', () => hideEventTooltip(ringTooltip));
+    yourDayRing?.addEventListener('pointerleave', () => hideEventTooltip(yourRingTooltip));
   }
 
   function initFilterChips() {
@@ -2767,11 +3067,17 @@
   }
 
   function resetStandardDay() {
-    state.events = defaultEvents();
-    state.standardWakeMinutes = toMinutes('07:00');
+    const defaults = getDefaultProfiles();
+    const targetProfile =
+      ['weekday', 'weekend'].includes(state.activeProfileId) && defaults[state.activeProfileId]
+        ? defaults[state.activeProfileId]
+        : defaults.weekday;
+    state.events = targetProfile.events.map((evt) => ({ ...evt }));
+    state.standardWakeMinutes = targetProfile.standardWakeMinutes;
     state.yourDayWakeMinutes = state.standardWakeMinutes;
     state.selectedId = null;
     state.openEditorId = null;
+    refreshProfileSelect();
     persistState();
     render();
     showToast('Standard Day reset to defaults', 'success');
@@ -2780,6 +3086,25 @@
   function initStandardDayControls() {
     if (resetStandardDayBtn) {
       resetStandardDayBtn.addEventListener('click', resetStandardDay);
+    }
+
+    if (profileSelect) {
+      refreshProfileSelect();
+      profileSelect.addEventListener('change', (evt) => {
+        if (evt.target.value === '__new__') {
+          handleCreateProfile();
+          return;
+        }
+        applyProfile(evt.target.value);
+      });
+    }
+
+    if (saveProfileBtn) {
+      saveProfileBtn.addEventListener('click', () => saveActiveProfile());
+    }
+
+    if (resetPresetsBtn) {
+      resetPresetsBtn.addEventListener('click', () => resetPresetProfiles());
     }
   }
 
