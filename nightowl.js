@@ -199,6 +199,7 @@
     activeTab: 'your',
     exportPeriod: 'full-schedule',
     exportAllEvents: false,
+    autoProfileSelection: true,
     profiles: {},
     activeProfileId: 'weekday'
   };
@@ -475,6 +476,9 @@
         );
         state.activeTab = ['standard', 'planner'].includes(prefs.activeTab) ? prefs.activeTab : 'your';
         state.activeProfileId = prefs.activeProfileId || state.activeProfileId;
+        if (typeof prefs.autoProfileSelection === 'boolean') {
+          state.autoProfileSelection = prefs.autoProfileSelection;
+        }
       }
     } catch (err) {
       console.warn('Failed to load prefs', err);
@@ -530,7 +534,8 @@
         standardWakeMinutes: state.standardWakeMinutes,
         yourDayWakeMinutes: state.yourDayWakeMinutes,
         activeTab: state.activeTab,
-        activeProfileId: state.activeProfileId
+        activeProfileId: state.activeProfileId,
+        autoProfileSelection: state.autoProfileSelection
       })
     );
     if (state.overrideNow) {
@@ -816,6 +821,7 @@
 
   function maybeAutoSelectPresetProfile() {
     if (!state.profiles || !Object.keys(state.profiles).length) return;
+    if (!state.autoProfileSelection) return;
     if (isCustomProfileActive()) return;
     const desired = isFeelsLikeWeekend() ? 'weekend' : 'weekday';
     if (state.activeProfileId !== desired && state.profiles[desired]) {
@@ -1049,24 +1055,8 @@
     const feelsMinutes = feelsLikeMinutes(nowMinutes);
     const nowRadius = getRadiusForTime(nowMinutes, radius);
     const feelsRadius = getRadiusForTime(feelsMinutes, radius);
-
-    const feelsLikeHand = createSVG('line', {
-      x1: center,
-      y1: center,
-      x2: center + Math.cos(((angleFromMinutes(feelsMinutes) - 90) * Math.PI) / 180) * (feelsRadius + 10),
-      y2: center + Math.sin(((angleFromMinutes(feelsMinutes) - 90) * Math.PI) / 180) * (feelsRadius + 10),
-      class: 'clock-feels-hand'
-    });
-    dayRing.appendChild(feelsLikeHand);
-
-    const realTimeHand = createSVG('line', {
-      x1: center,
-      y1: center,
-      x2: center + Math.cos(((angleFromMinutes(nowMinutes) - 90) * Math.PI) / 180) * (nowRadius - 32),
-      y2: center + Math.sin(((angleFromMinutes(nowMinutes) - 90) * Math.PI) / 180) * (nowRadius - 32),
-      class: 'clock-now-hand'
-    });
-    dayRing.appendChild(realTimeHand);
+    drawClockHands(dayRing, center, nowMinutes, nowRadius, 'clock-now-hand');
+    drawClockHands(dayRing, center, feelsMinutes, feelsRadius, 'clock-feels-hand');
 
     const centerDot = createSVG('circle', { cx: center, cy: center, r: 6, class: 'clock-center' });
     dayRing.appendChild(centerDot);
@@ -1110,24 +1100,8 @@
     const feelsMinutes = feelsLikeMinutes(nowMinutes);
     const nowRadius = getRadiusForTime(nowMinutes, radius);
     const feelsRadius = getRadiusForTime(feelsMinutes, radius);
-
-    const feelsLikeHand = createSVG('line', {
-      x1: center,
-      y1: center,
-      x2: center + Math.cos(((angleFromMinutes(feelsMinutes) - 90) * Math.PI) / 180) * (feelsRadius + 10),
-      y2: center + Math.sin(((angleFromMinutes(feelsMinutes) - 90) * Math.PI) / 180) * (feelsRadius + 10),
-      class: 'clock-feels-hand'
-    });
-    yourDayRing.appendChild(feelsLikeHand);
-
-    const realTimeHand = createSVG('line', {
-      x1: center,
-      y1: center,
-      x2: center + Math.cos(((angleFromMinutes(nowMinutes) - 90) * Math.PI) / 180) * (nowRadius - 32),
-      y2: center + Math.sin(((angleFromMinutes(nowMinutes) - 90) * Math.PI) / 180) * (nowRadius - 32),
-      class: 'clock-now-hand'
-    });
-    yourDayRing.appendChild(realTimeHand);
+    drawClockHands(yourDayRing, center, nowMinutes, nowRadius, 'clock-now-hand');
+    drawClockHands(yourDayRing, center, feelsMinutes, feelsRadius, 'clock-feels-hand');
 
     const centerDot = createSVG('circle', { cx: center, cy: center, r: 6, class: 'clock-center' });
     yourDayRing.appendChild(centerDot);
@@ -1139,6 +1113,34 @@
   function updateClockLabels(nowMinutes, feelsMinutes, nowEl, feelsEl) {
     if (feelsEl) feelsEl.innerHTML = `<span class="feels-like-text">Feels like</span> · <span class="feels-like-time">${formatMinutes(feelsMinutes)}</span>`;
     if (nowEl) nowEl.textContent = `Real time · ${formatMinutes(nowMinutes)}`;
+  }
+
+  function drawClockHands(ring, center, minutes, radius, toneClass) {
+    const totalMinutes = ((minutes % MINUTES_IN_DAY) + MINUTES_IN_DAY) % MINUTES_IN_DAY;
+    const hours = Math.floor(totalMinutes / 60) % 12;
+    const mins = totalMinutes % 60;
+    const hourAngle = ((hours + mins / 60) / 12) * 360;
+    const minuteAngle = (mins / 60) * 360;
+    const hourLength = Math.max(radius - 54, 28);
+    const minuteLength = Math.max(radius - 26, 40);
+
+    const hourHand = createSVG('line', {
+      x1: center,
+      y1: center,
+      x2: center + Math.cos(((hourAngle - 90) * Math.PI) / 180) * hourLength,
+      y2: center + Math.sin(((hourAngle - 90) * Math.PI) / 180) * hourLength,
+      class: `clock-hand clock-hand-hour ${toneClass}`
+    });
+    ring.appendChild(hourHand);
+
+    const minuteHand = createSVG('line', {
+      x1: center,
+      y1: center,
+      x2: center + Math.cos(((minuteAngle - 90) * Math.PI) / 180) * minuteLength,
+      y2: center + Math.sin(((minuteAngle - 90) * Math.PI) / 180) * minuteLength,
+      class: `clock-hand clock-hand-minute ${toneClass}`
+    });
+    ring.appendChild(minuteHand);
   }
 
   function renderEventDots(center, radius) {
@@ -3095,6 +3097,7 @@
           handleCreateProfile();
           return;
         }
+        state.autoProfileSelection = false;
         applyProfile(evt.target.value);
       });
     }
