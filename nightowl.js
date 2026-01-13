@@ -643,12 +643,19 @@
     return new Date(date.getTime() - diff);
   }
 
+  const INNER_RING_OFFSET = 40;
+  const INNER_RING_SCALE = 0.85;
+
+  function getInnerRadius(outerRadius) {
+    return (outerRadius - INNER_RING_OFFSET) * INNER_RING_SCALE;
+  }
+
   function getRadiusForTime(mins, maxRadius) {
     const isPm = (mins % MINUTES_IN_DAY) >= (MINUTES_IN_DAY / 2);
     // AM = outer, PM = inner
     // Let's define the rings relative to maxRadius (which is ~150)
-    // Outer ring ~150, Inner ring ~100
-    return isPm ? maxRadius - 40 : maxRadius;
+    // Outer ring ~150, Inner ring scaled down for emphasis
+    return isPm ? getInnerRadius(maxRadius) : maxRadius;
   }
 
   function rotatePoint(mins, radius, center, offset = 0) {
@@ -853,7 +860,7 @@
     ring.appendChild(backdrop);
 
     // Inner PM ring (thin line)
-    const innerRadius = radius - 40;
+    const innerRadius = getInnerRadius(radius);
     const innerRing = createSVG('circle', { cx: center, cy: center, r: innerRadius, class: 'clock-backdrop-inner' });
     ring.appendChild(innerRing);
 
@@ -866,7 +873,7 @@
     const duration = start <= end ? end - start : (MINUTES_IN_DAY - start) + end;
 
     // We break the duration into AM (0-720) and PM (720-1440) chunks
-    const innerRadius = outerRadius - 40;
+    const innerRadius = getInnerRadius(outerRadius);
 
     // Simplest way: iterate through duration in chunks
     // But specific AM/PM boundaries (720 and 0/1440) are important
@@ -952,7 +959,7 @@
     let remaining = duration;
     let iter = 0;
     const outerRadius = radius;
-    const innerRadius = radius - 40;
+    const innerRadius = getInnerRadius(radius);
 
     while (remaining > 0 && iter < 4) {
       iter++;
@@ -986,7 +993,7 @@
 
   function drawHourTicks(ring, center, radius) {
     if (!ring) return;
-    const innerRadius = radius - 40;
+    const innerRadius = getInnerRadius(radius);
 
     // Draw 1-12 on outer ring
     for (let h = 1; h <= 12; h++) {
@@ -1032,7 +1039,7 @@
           x: center + cos * (innerRadius + 16),
           y: center + sin * (innerRadius + 16) + 4,
           class: 'clock-hour-number',
-          style: 'font-size: 0.75rem; fill: var(--text-3);'
+          style: 'font-size: 0.675rem; fill: var(--text-3);'
         });
         // 24 maps to 00 sometimes, but user request "13-23" (and probably 0/24 implied)
         // simplified: 13, 14, ... 23, 00
@@ -1058,7 +1065,7 @@
     drawClockHands(dayRing, center, nowMinutes, nowRadius, 'clock-now-hand');
     drawClockHands(dayRing, center, feelsMinutes, feelsRadius, 'clock-feels-hand');
 
-    const centerDot = createSVG('circle', { cx: center, cy: center, r: 6, class: 'clock-center' });
+    const centerDot = createSVG('circle', { cx: center, cy: center, r: 5.1, class: 'clock-center' });
     dayRing.appendChild(centerDot);
 
     renderEventDots(center, radius);
@@ -1103,7 +1110,7 @@
     drawClockHands(yourDayRing, center, nowMinutes, nowRadius, 'clock-now-hand');
     drawClockHands(yourDayRing, center, feelsMinutes, feelsRadius, 'clock-feels-hand');
 
-    const centerDot = createSVG('circle', { cx: center, cy: center, r: 6, class: 'clock-center' });
+    const centerDot = createSVG('circle', { cx: center, cy: center, r: 5.1, class: 'clock-center' });
     yourDayRing.appendChild(centerDot);
 
     renderYourDayMarkers(getYourDayEvents(), center, radius);
