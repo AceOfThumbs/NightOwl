@@ -2,6 +2,7 @@
 :root {
   --font-base: 16px;
   --scale: 1;
+  --icon-scale: 1.5;
   --radius-lg: 18px;
   --radius-md: 12px;
   --radius-sm: 8px;
@@ -69,10 +70,14 @@ html[data-theme="light"] {
   box-sizing: border-box;
 }
 
+html {
+  font-size: calc(var(--font-base) * var(--scale));
+}
+
 body {
   margin: 0;
   font-family: "Inter", "Segoe UI", system-ui, -apple-system, sans-serif;
-  font-size: calc(var(--font-base) * var(--scale));
+  font-size: 1rem;
   background: radial-gradient(circle at top, rgba(38, 61, 119, 0.35), transparent 55%), var(--bg);
   color: var(--text-1);
   min-height: 100vh;
@@ -510,11 +515,11 @@ textarea {
 }
 
 .event-dot-group text {
-  font-size: 1.35rem;
+  font-size: calc(1.35rem * var(--icon-scale));
 }
 
 .your-day-marker-icon {
-  font-size: 1.25rem;
+  font-size: calc(1.25rem * var(--icon-scale));
   pointer-events: none;
 }
 
@@ -561,7 +566,7 @@ textarea {
 }
 
 .legend-icon {
-  font-size: 1.1rem;
+  font-size: calc(1.1rem * var(--icon-scale));
 }
 
 .legend-dot {
@@ -722,7 +727,7 @@ textarea {
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 1.5rem;
+  font-size: calc(1.5rem * var(--icon-scale));
 }
 
 /* Specific layout for Your Day items (readonly) */
@@ -1456,10 +1461,16 @@ select {
   opacity: 0.3;
 }
 
-.clock-now-hand,
-.clock-feels-hand {
-  stroke-width: 4;
+.clock-hand {
   stroke-linecap: round;
+}
+
+.clock-hand-hour {
+  stroke-width: 5;
+}
+
+.clock-hand-minute {
+  stroke-width: 3;
 }
 
 .clock-hour-number {
